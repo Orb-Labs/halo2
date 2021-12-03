@@ -10,6 +10,8 @@ and this project adheres to Rust's notion of
 
 ### Added
 - `halo2_proofs::dev::FailureLocation` (used in `VerifyFailure::Lookup`)
+- `halo2_proofs::plonk::Constraints` helper, for constructing a gate from a set
+  of constraints with a common selector.
 
 ### Changed
 - `halo2_proofs` now depends on `rand_core` instead of `rand`, and requires the
