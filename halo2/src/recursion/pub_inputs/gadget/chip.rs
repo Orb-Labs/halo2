@@ -65,7 +65,7 @@ pub struct PubInputsConfig<F: FieldExt, const K: usize> {
     // The N-bit chunk representations of the public inputs.
     // These are used in-circuit for scalar multiplication.
     bits: Column<Advice>,
-    table: lookup::TableConfig<F, K>,
+    pub(in crate::recursion) table: lookup::TableConfig<F, K>,
 }
 
 impl<F: FieldExt, const K: usize> PubInputsConfig<F, K> {
