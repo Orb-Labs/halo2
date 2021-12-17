@@ -2,6 +2,8 @@
 use halo2_proofs::{circuit::Layouter, plonk::Error};
 use pasta_curves::arithmetic::FieldExt;
 
+mod chip;
+
 /// Instructions to map bitstring public inputs to and from endoscalars.
 pub trait PubInputsInstructions<F: FieldExt + PubInputsLookup<K, N>, const K: usize, const N: usize>
 {
