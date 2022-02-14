@@ -1,4 +1,11 @@
 # halo2 [![Crates.io](https://img.shields.io/crates/v/halo2.svg)](https://crates.io/crates/halo2) #
+[![Hercules-ci][Herc badge]][Herc link]
+[![Cachix Cache][Cachix badge]][Cachix link]
+
+[Herc badge]: https://img.shields.io/badge/ci--by--hercules-green.svg
+[Herc link]: https://hercules-ci.com/github/Orbis-Tertius/halo2
+[Cachix badge]: https://img.shields.io/badge/cachix-private_Orbis--Tertius-blue.svg
+[Cachix link]: https://private-Orbis-Tertius.cachix.org
 
 **IMPORTANT**: This library is in beta, and should not be used in production software.
 
