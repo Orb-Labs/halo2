@@ -20,9 +20,10 @@
                  inherit system;
                };
 
+            rustChannel = "1.58.1";
              rustPkgs =
                pkgs.rustBuilder.makePackageSet'
-                 { rustChannel = "1.56.1";
+                 { inherit rustChannel;
                    packageFun = import ./Cargo.nix;
                    packageOverrides =
                      let
@@ -42,18 +43,34 @@
                     pkgs: pkgs.rustBuilder.overrides.all ++ [ expat-sys freetype-sys ];
                  };
          in
-         { devShell =
-             pkgs.mkShell
-               { buildInputs =
-                   with pkgs;
-                   [ cargo
-                     cargo2nix.defaultPackage.${system}
-                     expat
-                     freetype
-                   ];
-               };
+         { # defaultPackage = rustPkgs.workspace.halo2-example {};
 
-           packages = mapAttrs (_: v: v {}) rustPkgs.workspace;
+           devShell =
+             let
+               rust-toolchain =
+                 (pkgs.formats.toml {}).generate "rust-toolchain.toml"
+                   { toolchain =
+                       { channel = rustChannel;
+
+                         components =
+                           [ "rustc"
+                             "rust-src"
+                             "cargo"
+                             "clippy"
+                             "rust-docs"
+                           ];
+                       };
+                   };
+             in
+             rustPkgs.workspaceShell {
+               nativeBuildInputs = with pkgs; [ rust-analyzer rustup ];
+               shellHook =
+                   ''
+                   cp --no-preserve=mode ${rust-toolchain} rust-toolchain.toml
+
+                   export RUST_SRC_PATH=~/.rustup/toolchains/${rustChannel}-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/
+                   '';
+               };
          }
       );
 }
