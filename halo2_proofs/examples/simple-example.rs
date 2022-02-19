@@ -116,6 +116,7 @@ impl<F: FieldExt> FieldChip<F> {
             vec![s_mul * (lhs * rhs - out)]
         });
 
+        dbg!(meta.minimum_rows());
         FieldConfig {
             advice,
             instance,
@@ -288,8 +289,8 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
 
         // Load the constant factor into the circuit.
-        let constant =
-            field_chip.load_constant(layouter.namespace(|| "load constant"), self.constant)?;
+        // let constant =
+        //     field_chip.load_constant(layouter.namespace(|| "load constant"), self.constant)?;
 
         // We only have access to plain multiplication.
         // We could implement our circuit as:
@@ -304,10 +305,10 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         //     c    = constant*absq
         let ab = field_chip.mul(layouter.namespace(|| "a * b"), a, b)?;
         let absq = field_chip.mul(layouter.namespace(|| "ab * ab"), ab.clone(), ab)?;
-        let c = field_chip.mul(layouter.namespace(|| "constant * absq"), constant, absq)?;
+        // let c = field_chip.mul(layouter.namespace(|| "constant * absq"), constant, absq)?;
 
         // Expose the result as a public input to the circuit.
-        field_chip.expose_public(layouter.namespace(|| "expose c"), c, 0)
+        field_chip.expose_public(layouter.namespace(|| "expose c"), absq, 0)
     }
 }
 // ANCHOR_END: circuit
@@ -318,13 +319,13 @@ fn main() {
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
     // circuit is very small, we can pick a very small value here.
-    let k = 4;
+    let k = 3;
 
     // Prepare the private and public inputs to the circuit!
     let constant = Fp::from(7);
     let a = Fp::from(2);
     let b = Fp::from(3);
-    let c = constant * a.square() * b.square();
+    let c =  a.square() * b.square();
 
     // Instantiate the circuit with the private inputs.
     let circuit = MyCircuit {

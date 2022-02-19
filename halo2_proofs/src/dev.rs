@@ -661,6 +661,7 @@ impl<F: FieldExt> MockProver<F> {
     ) -> Result<Self, Error> {
         let n = 1 << k;
 
+        dbg!(circuit);
         let mut cs = ConstraintSystem::default();
         let config = ConcreteCircuit::configure(&mut cs);
         let cs = cs;
