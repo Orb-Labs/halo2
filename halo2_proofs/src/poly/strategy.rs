@@ -31,7 +31,7 @@ pub trait VerificationStrategy<
     /// output.
     fn process(
         self,
-        f: impl FnOnce(V::MSMAccumulator) -> Result<V::Guard, Error>,
+        f: impl FnOnce(V::Guard) -> Result<V::Guard, Error>,
     ) -> Result<Self::Output, Error>;
 
     /// Finalizes the batch and checks its validity.
