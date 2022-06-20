@@ -301,9 +301,9 @@ pub fn verify_proof<
 
     let verifier: V = Verifier::new(params);
 
-    strategy.process(|guard| {
+    strategy.process(|msm_accumulator| {
         verifier
-            .verify_proof(transcript, queries, guard)
+            .verify_proof(transcript, queries, msm_accumulator)
             .map_err(|_| Error::Opening)
     })
 }
