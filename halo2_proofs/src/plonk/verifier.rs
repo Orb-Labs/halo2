@@ -9,7 +9,7 @@ use super::{
 };
 use crate::arithmetic::{CurveAffine, FieldExt};
 use crate::poly::{
-    commitment::{Blind, Guard, Params, MSM},
+    commitment::{Blind, Guard, Params},
     multiopen::{self, VerifierQuery},
 };
 use crate::transcript::{read_n_points, read_n_scalars, EncodedChallenge, TranscriptRead};
@@ -29,15 +29,13 @@ pub trait VerificationStrategy<'params, C: CurveAffine> {
 
 /// A verifier that checks a single proof at a time.
 #[derive(Debug)]
-pub struct SingleVerifier<'params, C: CurveAffine> {
-    msm: MSM<'params, C>,
+pub struct SingleVerifier<'params, C> {
 }
 
-impl<'params, C: CurveAffine> SingleVerifier<'params, C> {
+impl<'params, C, S> SingleVerifier<'params, C> {
     /// Constructs a new single proof verifier.
-    pub fn new(params: &'params Params<C>) -> Self {
+    pub fn new(params: &'params Params<C, S>) -> Self {
         SingleVerifier {
-            msm: MSM::new(params),
         }
     }
 }

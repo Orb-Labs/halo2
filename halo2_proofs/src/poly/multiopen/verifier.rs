@@ -2,7 +2,7 @@ use ff::Field;
 use rand_core::RngCore;
 
 use super::super::{
-    commitment::{Guard, Params, MSM},
+    commitment::{Guard, Params},
     Error,
 };
 use super::{
@@ -17,14 +17,15 @@ pub fn verify_proof<
     'r,
     'params: 'r,
     I,
-    C: CurveAffine,
+    C,
+    S,
     E: EncodedChallenge<C>,
     T: TranscriptRead<C, E>,
 >(
-    params: &'params Params<C>,
+    params: &'params Params<C, S>,
     transcript: &mut T,
     queries: I,
-    mut msm: MSM<'params, C>,
+    mut commitment: C,
 ) -> Result<Guard<'params, C, E>, Error>
 where
     I: IntoIterator<Item = VerifierQuery<'r, 'params, C>> + Clone,
@@ -46,10 +47,10 @@ where
     // while the inner vec corresponds to the points in a particular set.
     let mut q_eval_sets = Vec::with_capacity(point_sets.len());
     for point_set in point_sets.iter() {
-        q_eval_sets.push(vec![C::Scalar::zero(); point_set.len()]);
+        q_eval_sets.push(vec![S::zero(); point_set.len()]);
     }
     {
-        let mut accumulate = |set_idx: usize, new_commitment, evals: Vec<C::Scalar>| {
+        let mut accumulate = |set_idx: usize, new_commitment, evals: Vec<S>| {
             q_commitments[set_idx].scale(*x_1);
             match new_commitment {
                 CommitmentReference::Commitment(c) => {

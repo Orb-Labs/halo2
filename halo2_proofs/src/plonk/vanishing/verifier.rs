@@ -6,7 +6,7 @@ use crate::{
     arithmetic::CurveAffine,
     plonk::{Error, VerifyingKey},
     poly::{
-        commitment::{Params, MSM},
+        commitment::{Params},
         multiopen::VerifierQuery,
     },
     transcript::{read_n_points, EncodedChallenge, TranscriptRead},
@@ -15,29 +15,29 @@ use crate::{
 use super::super::{ChallengeX, ChallengeY};
 use super::Argument;
 
-pub struct Committed<C: CurveAffine> {
+pub struct Committed<C> {
     random_poly_commitment: C,
 }
 
-pub struct Constructed<C: CurveAffine> {
+pub struct Constructed<C> {
     h_commitments: Vec<C>,
     random_poly_commitment: C,
 }
 
-pub struct PartiallyEvaluated<C: CurveAffine> {
+pub struct PartiallyEvaluated<C, S> {
     h_commitments: Vec<C>,
     random_poly_commitment: C,
-    random_eval: C::Scalar,
+    random_eval: S,
 }
 
-pub struct Evaluated<'params, C: CurveAffine> {
-    h_commitment: MSM<'params, C>,
+pub struct Evaluated<'params, C, S> {
+    h_commitment: C,
     random_poly_commitment: C,
-    expected_h_eval: C::Scalar,
-    random_eval: C::Scalar,
+    expected_h_eval: S,
+    random_eval: S,
 }
 
-impl<C: CurveAffine> Argument<C> {
+impl<C> Argument<C> {
     pub(in crate::plonk) fn read_commitments_before_y<
         E: EncodedChallenge<C>,
         T: TranscriptRead<C, E>,
@@ -52,7 +52,7 @@ impl<C: CurveAffine> Argument<C> {
     }
 }
 
-impl<C: CurveAffine> Committed<C> {
+impl<C> Committed<C> {
     pub(in crate::plonk) fn read_commitments_after_y<
         E: EncodedChallenge<C>,
         T: TranscriptRead<C, E>,
@@ -71,7 +71,7 @@ impl<C: CurveAffine> Committed<C> {
     }
 }
 
-impl<C: CurveAffine> Constructed<C> {
+impl<C> Constructed<C> {
     pub(in crate::plonk) fn evaluate_after_x<E: EncodedChallenge<C>, T: TranscriptRead<C, E>>(
         self,
         transcript: &mut T,
@@ -86,13 +86,13 @@ impl<C: CurveAffine> Constructed<C> {
     }
 }
 
-impl<C: CurveAffine> PartiallyEvaluated<C> {
+impl<C, S> PartiallyEvaluated<C, S> {
     pub(in crate::plonk) fn verify(
         self,
-        params: &Params<C>,
-        expressions: impl Iterator<Item = C::Scalar>,
+        params: &Params<C, S>,
+        expressions: impl Iterator<Item = S>,
         y: ChallengeY<C>,
-        xn: C::Scalar,
+        xn: S,
     ) -> Evaluated<C> {
         let expected_h_eval = expressions.fold(C::Scalar::zero(), |h_eval, v| h_eval * &*y + &v);
         let expected_h_eval = expected_h_eval * ((xn - C::Scalar::one()).invert().unwrap());
@@ -116,7 +116,7 @@ impl<C: CurveAffine> PartiallyEvaluated<C> {
     }
 }
 
-impl<'params, C: CurveAffine> Evaluated<'params, C> {
+impl<'params, C> Evaluated<'params, C> {
     pub(in crate::plonk) fn queries<'r>(
         &'r self,
         x: ChallengeX<C>,

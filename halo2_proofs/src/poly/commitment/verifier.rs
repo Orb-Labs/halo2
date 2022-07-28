@@ -4,7 +4,7 @@ use group::{
 };
 
 use super::super::Error;
-use super::{Params, MSM};
+use super::{Params};
 use crate::transcript::{EncodedChallenge, TranscriptRead};
 
 use crate::arithmetic::{best_multiexp, CurveAffine};
