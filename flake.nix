@@ -27,9 +27,9 @@
       };
     })
     // {
-      # checks.x86_64-linux.halo2 = self.packages.x86_64-linux.halo2;
-      # checks.x86_64-linux.halo2-proofs = self.packages.x86_64-linux.halo2-proofs;
-      # checks.x86_64-linux.halo2-gadgets = self.packages.x86_64-linux.halo2-gadgets;
+      checks.x86_64-linux.halo2 = self.packages.x86_64-linux.halo2;
+      checks.x86_64-linux.halo2-proofs = self.packages.x86_64-linux.halo2-proofs;
+      checks.x86_64-linux.halo2-gadgets = self.packages.x86_64-linux.halo2-gadgets;
 
       devShells.x86_64-linux.default =
         let
