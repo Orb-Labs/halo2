@@ -15,7 +15,7 @@ use super::{
 use crate::{
     arithmetic::{eval_polynomial, CurveAffine, FieldExt},
     circuit::Value,
-    plonk::Assigned,
+    plonk::{Assigned, DynamicTable},
     poly::{
         self,
         commitment::{Blind, Params},
@@ -157,6 +157,20 @@ pub fn create_proof<
                     &mut self,
                     _: A,
                     _: &Selector,
+                    _: usize,
+                ) -> Result<(), Error>
+                where
+                    A: FnOnce() -> AR,
+                    AR: Into<String>,
+                {
+                    // We only care about advice columns here
+
+                    Ok(())
+                }
+
+                fn include_in_lookup<A, AR>(
+                    &mut self,
+                    _: &DynamicTable,
                     _: usize,
                 ) -> Result<(), Error>
                 where

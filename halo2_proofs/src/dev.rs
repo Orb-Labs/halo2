@@ -9,6 +9,7 @@ use std::ops::{Add, Mul, Neg, Range};
 use ff::Field;
 
 use crate::plonk::Assigned;
+use crate::plonk::DynamicTable;
 use crate::{
     arithmetic::{FieldExt, Group},
     circuit,
@@ -288,6 +289,7 @@ pub struct MockProver<F: Group + Field> {
     instance: Vec<Vec<F>>,
 
     selectors: Vec<Vec<bool>>,
+    dynamic_tables: Vec<Vec<bool>>,
 
     permutation: permutation::keygen::Assembly,
 
@@ -337,6 +339,14 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         self.selectors[selector.0][row] = true;
 
         Ok(())
+    }
+
+    fn include_in_lookup<A, AR>(&mut self, _table: &DynamicTable, _row: usize) -> Result<(), Error>
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String> {
+            // TODO
+            Ok(())
     }
 
     fn query_instance(
@@ -501,6 +511,7 @@ impl<F: FieldExt> MockProver<F> {
         // Fixed columns contain no blinding factors.
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
+        let dynamic_tables = vec![vec![false; n]; cs.num_dynamic_tables];
         // Advice columns contain blinding factors.
         let blinding_factors = cs.blinding_factors();
         let usable_rows = n - (blinding_factors + 1);
@@ -528,6 +539,7 @@ impl<F: FieldExt> MockProver<F> {
             advice,
             instance,
             selectors,
+            dynamic_tables,
             permutation,
             usable_rows: 0..usable_rows,
         };
@@ -535,6 +547,16 @@ impl<F: FieldExt> MockProver<F> {
         ConcreteCircuit::FloorPlanner::synthesize(&mut prover, circuit, config, constants)?;
 
         let (cs, selector_polys) = prover.cs.compress_selectors(prover.selectors.clone());
+        prover.cs = cs;
+        prover.fixed.extend(selector_polys.into_iter().map(|poly| {
+            let mut v = vec![CellValue::Unassigned; n];
+            for (v, p) in v.iter_mut().zip(&poly[..]) {
+                *v = CellValue::Assigned(*p);
+            }
+            v
+        }));
+
+        let (cs, selector_polys) = prover.cs.compress_dynamic_table_tags(prover.dynamic_tables.clone());
         prover.cs = cs;
         prover.fixed.extend(selector_polys.into_iter().map(|poly| {
             let mut v = vec![CellValue::Unassigned; n];
