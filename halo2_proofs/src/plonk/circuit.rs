@@ -338,12 +338,18 @@ pub struct DynamicTable {
 
 impl DynamicTable {
     /// Enable this selector at the given offset within the given region.
-    pub fn include_row<F: Field>(
+    pub fn include_row<F, A, AR>(
         &self,
+        annotation: A,
         region: &mut Region<F>,
         offset: usize,
-    ) -> Result<(), Error> {
-        todo!()
+    ) -> Result<(), Error>
+    where
+        F: Field,
+        A: Fn() -> AR,
+        AR: Into<String>,
+    {
+        region.include_in_lookup(annotation, self, offset)
     }
 }
 
@@ -383,7 +389,12 @@ pub trait Assignment<F: Field> {
         AR: Into<String>;
 
     /// Includes a row in the provided dynamic lookup table.
-    fn include_in_lookup<A, AR>(&mut self, annotation: A, table: &DynamicTable, row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(
+        &mut self,
+        annotation: A,
+        table: &DynamicTable,
+        row: usize,
+    ) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String>;

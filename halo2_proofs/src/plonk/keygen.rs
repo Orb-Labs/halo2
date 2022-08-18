@@ -84,7 +84,12 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(&mut self, _: A, table: &DynamicTable, row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(
+        &mut self,
+        _: A,
+        table: &DynamicTable,
+        row: usize,
+    ) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String>,

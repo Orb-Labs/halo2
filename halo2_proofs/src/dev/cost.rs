@@ -13,8 +13,8 @@ use group::prime::PrimeGroup;
 use crate::{
     circuit::Value,
     plonk::{
-        Advice, Any, Assigned, Assignment, Circuit, Column, ConstraintSystem, Error, Fixed,
-        FloorPlanner, Instance, Selector, DynamicTable,
+        Advice, Any, Assigned, Assignment, Circuit, Column, ConstraintSystem, DynamicTable, Error,
+        Fixed, FloorPlanner, Instance, Selector,
     },
     poly::Rotation,
 };
@@ -70,10 +70,16 @@ impl<F: Field> Assignment<F> for Assembly {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(&mut self, _:A, table: &DynamicTable, row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(
+        &mut self,
+        _: A,
+        table: &DynamicTable,
+        row: usize,
+    ) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
-        AR: Into<String> {
+        AR: Into<String>,
+    {
         self.dynamic_tables[table.index][row] = true;
 
         Ok(())

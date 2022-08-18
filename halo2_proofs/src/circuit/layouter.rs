@@ -232,7 +232,7 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
 
     fn include_in_lookup<'v>(
         &'v mut self,
-        annotation: &'v (dyn Fn() -> String + 'v),
+        _: &'v (dyn Fn() -> String + 'v),
         table: &DynamicTable,
         offset: usize,
     ) -> Result<(), Error> {

@@ -341,12 +341,18 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(&mut self, _:A, _table: &DynamicTable, _row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(
+        &mut self,
+        _: A,
+        _table: &DynamicTable,
+        _row: usize,
+    ) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
-        AR: Into<String> {
-            // TODO
-            Ok(())
+        AR: Into<String>,
+    {
+        // TODO
+        Ok(())
     }
 
     fn query_instance(
@@ -556,7 +562,9 @@ impl<F: FieldExt> MockProver<F> {
             v
         }));
 
-        let (cs, selector_polys) = prover.cs.compress_dynamic_table_tags(prover.dynamic_tables.clone());
+        let (cs, selector_polys) = prover
+            .cs
+            .compress_dynamic_table_tags(prover.dynamic_tables.clone());
         prover.cs = cs;
         prover.fixed.extend(selector_polys.into_iter().map(|poly| {
             let mut v = vec![CellValue::Unassigned; n];

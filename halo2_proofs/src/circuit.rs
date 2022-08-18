@@ -6,7 +6,9 @@ use ff::Field;
 
 use crate::{
     arithmetic::FieldExt,
-    plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Selector, TableColumn, DynamicTable},
+    plonk::{
+        Advice, Any, Assigned, Column, DynamicTable, Error, Fixed, Instance, Selector, TableColumn,
+    },
 };
 
 mod value;
