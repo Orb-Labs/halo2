@@ -70,7 +70,7 @@ impl<F: Field> Assignment<F> for Assembly {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(&mut self, _:A, table: &DynamicTable, row: usize) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String> {
@@ -151,7 +151,7 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
         let config = ConcreteCircuit::configure(&mut cs);
         let mut assembly = Assembly {
             selectors: vec![vec![false; 1 << k]; cs.num_selectors],
-            dynamic_tables: vec![vec![false; 1 << k]; cs.num_dynamic_tables],
+            dynamic_tables: vec![vec![false; 1 << k]; cs.dynamic_tables.len()],
         };
         ConcreteCircuit::FloorPlanner::synthesize(
             &mut assembly,

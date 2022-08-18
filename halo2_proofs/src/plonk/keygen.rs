@@ -84,7 +84,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(&mut self, _: A, table: &DynamicTable, row: usize) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String>,
@@ -221,7 +221,7 @@ where
         fixed: vec![domain.empty_lagrange_assigned(); cs.num_fixed_columns],
         permutation: permutation::keygen::Assembly::new(params.n as usize, &cs.permutation),
         selectors: vec![vec![false; params.n as usize]; cs.num_selectors],
-        dynamic_tables: vec![vec![false; params.n as usize]; cs.num_dynamic_tables],
+        dynamic_tables: vec![vec![false; params.n as usize]; cs.dynamic_tables.len()],
         usable_rows: 0..params.n as usize - (cs.blinding_factors() + 1),
         _marker: std::marker::PhantomData,
     };
@@ -290,7 +290,7 @@ where
         fixed: vec![vk.domain.empty_lagrange_assigned(); cs.num_fixed_columns],
         permutation: permutation::keygen::Assembly::new(params.n as usize, &cs.permutation),
         selectors: vec![vec![false; params.n as usize]; cs.num_selectors],
-        dynamic_tables: vec![vec![false; params.n as usize]; cs.num_dynamic_tables],
+        dynamic_tables: vec![vec![false; params.n as usize]; cs.dynamic_tables.len()],
         usable_rows: 0..params.n as usize - (cs.blinding_factors() + 1),
         _marker: std::marker::PhantomData,
     };

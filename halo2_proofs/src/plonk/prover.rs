@@ -170,6 +170,7 @@ pub fn create_proof<
 
                 fn include_in_lookup<A, AR>(
                     &mut self,
+                    _: A,
                     _: &DynamicTable,
                     _: usize,
                 ) -> Result<(), Error>

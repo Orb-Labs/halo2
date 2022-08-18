@@ -391,6 +391,19 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> RegionLayouter<F> for V1Region<'r
         )
     }
 
+    fn include_in_lookup<'v>(
+        &'v mut self,
+        annotation: &'v (dyn Fn() -> String + 'v),
+        table: &crate::plonk::DynamicTable,
+        offset: usize,
+    ) -> Result<(), Error> {
+        self.plan.cs.include_in_lookup(
+            annotation,
+            table,
+            *self.plan.regions[*self.region_index] + offset,
+        )
+    }
+
     fn assign_advice<'v>(
         &'v mut self,
         annotation: &'v (dyn Fn() -> String + 'v),

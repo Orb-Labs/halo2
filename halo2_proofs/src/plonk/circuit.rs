@@ -331,11 +331,20 @@ impl TableColumn {
 }
 
 /// TODO
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
     pub(crate) index: usize,
-    /// Columns in this table excluding the tag column.
-    pub(crate) columns: Vec<Column<Any>>,
+}
+
+impl DynamicTable {
+    /// Enable this selector at the given offset within the given region.
+    pub fn include_row<F: Field>(
+        &self,
+        region: &mut Region<F>,
+        offset: usize,
+    ) -> Result<(), Error> {
+        todo!()
+    }
 }
 
 /// This trait allows a [`Circuit`] to direct some backend to assign a witness
@@ -374,7 +383,7 @@ pub trait Assignment<F: Field> {
         AR: Into<String>;
 
     /// Includes a row in the provided dynamic lookup table.
-    fn include_in_lookup<A, AR>(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(&mut self, annotation: A, table: &DynamicTable, row: usize) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String>;
@@ -944,7 +953,6 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
-    pub(crate) num_dynamic_tables: usize,
 
     /// This is a cached vector that maps virtual selectors to the concrete
     /// fixed column that they were compressed into. This is just used by dev
@@ -953,8 +961,9 @@ pub struct ConstraintSystem<F: Field> {
     /// Like selector_map, but for `DynamicTable`s.
     pub(crate) dynamic_table_tag_map: Vec<Column<Fixed>>,
 
-    // TODO
-    // pub(crate) dynamic_table_map: Vec<Column<Fixed>>,
+    /// A map between `DynamicTable.index` and their columns (excluding the tag column)
+    pub(crate) dynamic_tables: Vec<Vec<Column<Any>>>,
+
     pub(crate) gates: Vec<Gate<F>>,
     pub(crate) advice_queries: Vec<(Column<Advice>, Rotation)>,
     // Contains an integer for each advice column
@@ -1013,9 +1022,9 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_columns: 0,
             num_instance_columns: 0,
             num_selectors: 0,
-            num_dynamic_tables: 0,
             selector_map: vec![],
             dynamic_table_tag_map: vec![],
+            dynamic_tables: vec![],
             gates: vec![],
             fixed_queries: Vec::new(),
             advice_queries: Vec::new(),
@@ -1249,9 +1258,8 @@ impl<F: Field> ConstraintSystem<F> {
         F: PrimeField,
     {
         assert!(self.dynamic_table_tag_map.is_empty());
-        assert_eq!(dynamic_tables.len(), self.num_dynamic_tables);
         // TODO compress
-        self.dynamic_table_tag_map = vec![self.fixed_column(); self.num_dynamic_tables];
+        self.dynamic_table_tag_map = vec![self.fixed_column(); self.dynamic_tables.len()];
 
         (
             self,
@@ -1401,15 +1409,16 @@ impl<F: Field> ConstraintSystem<F> {
         fixed_columns: &[Column<Fixed>],
         advice_columns: &[Column<Advice>],
     ) -> DynamicTable {
-        let index = self.num_dynamic_tables;
-        self.num_dynamic_tables += 1;
+        let index = self.dynamic_tables.len();
 
-        let columns = fixed_columns
-            .iter()
-            .map(|f| Column::<Any>::from(*f))
-            .chain(advice_columns.iter().map(|f| Column::<Any>::from(*f)))
-            .collect();
-        DynamicTable { index, columns }
+        self.dynamic_tables.push(
+            fixed_columns
+                .iter()
+                .map(|f| Column::<Any>::from(*f))
+                .chain(advice_columns.iter().map(|f| Column::<Any>::from(*f)))
+                .collect(),
+        );
+        DynamicTable { index }
     }
 
     /// Allocates a new fixed column that can be used in a lookup table.

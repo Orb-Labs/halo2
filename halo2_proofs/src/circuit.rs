@@ -6,7 +6,7 @@ use ff::Field;
 
 use crate::{
     arithmetic::FieldExt,
-    plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Selector, TableColumn},
+    plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Selector, TableColumn, DynamicTable},
 };
 
 mod value;
@@ -202,6 +202,21 @@ impl<'r, F: Field> Region<'r, F> {
     {
         self.region
             .enable_selector(&|| annotation().into(), selector, offset)
+    }
+
+    /// Enables a selector at the given offset.
+    pub(crate) fn include_in_lookup<A, AR>(
+        &mut self,
+        annotation: A,
+        table: &DynamicTable,
+        offset: usize,
+    ) -> Result<(), Error>
+    where
+        A: Fn() -> AR,
+        AR: Into<String>,
+    {
+        self.region
+            .include_in_lookup(&|| annotation().into(), table, offset)
     }
 
     /// Assign an advice column value (witness).

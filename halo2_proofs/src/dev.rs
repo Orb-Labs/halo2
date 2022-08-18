@@ -341,7 +341,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(&mut self, _table: &DynamicTable, _row: usize) -> Result<(), Error>
+    fn include_in_lookup<A, AR>(&mut self, _:A, _table: &DynamicTable, _row: usize) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String> {
@@ -511,7 +511,7 @@ impl<F: FieldExt> MockProver<F> {
         // Fixed columns contain no blinding factors.
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
-        let dynamic_tables = vec![vec![false; n]; cs.num_dynamic_tables];
+        let dynamic_tables = vec![vec![false; n]; cs.dynamic_tables.len()];
         // Advice columns contain blinding factors.
         let blinding_factors = cs.blinding_factors();
         let usable_rows = n - (blinding_factors + 1);
