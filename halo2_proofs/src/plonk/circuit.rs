@@ -1,6 +1,9 @@
 use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::{Field, PrimeField};
+use pasta_curves::arithmetic::FieldExt;
+use std::iter;
+use std::marker::PhantomData;
 use std::{
     convert::TryFrom,
     ops::{Neg, Sub},
@@ -333,7 +336,25 @@ impl TableColumn {
 /// TODO
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
+    /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
+    /// The index also serves as this dynamic table's unique tag value.
     pub(crate) index: usize,
+    // TODO replace with virtual column expression
+    pub(crate) tag_column: Column<Fixed>,
+}
+
+/// TODO
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct DynamicTableColumn<'table> {
+    pub(crate) index: usize,
+    column: Column<Any>,
+    table: PhantomData<&'table ()>,
+}
+
+impl DynamicTableColumn<'_> {
+    pub(crate) fn column(&self) -> Column<Any> {
+        self.column
+    }
 }
 
 impl DynamicTable {
@@ -1118,6 +1139,48 @@ impl<F: Field> ConstraintSystem<F> {
         index
     }
 
+    /// Add a dynamic lookup argument for some input expressions and table columns.
+    ///
+    /// `table_map` returns a map between input expressions and the table columns
+    /// they need to match.
+    pub fn lookup_dynamic<'table>(
+        &mut self,
+        table: &'table DynamicTable,
+        table_map: impl FnOnce(
+            &mut VirtualCells<'_, F>,
+        ) -> Vec<(Expression<F>, DynamicTableColumn<'table>)>,
+    ) -> usize
+    where
+        F: PrimeField,
+    {
+        let dynamic_table_tag_map = self.dynamic_table_tag_map.clone();
+        let mut cells = VirtualCells::new(self);
+        let mut table_map: Vec<_> = table_map(&mut cells)
+            .into_iter()
+            .map(|(input, table)| {
+                if input.contains_simple_selector() {
+                    panic!("expression containing simple selector supplied to lookup argument");
+                }
+
+                let table = cells.query_any(table.column(), Rotation::cur());
+
+                (input, table)
+            })
+            .collect();
+
+        table_map.push((
+            Expression::Constant(F::from(table.index as u64)),
+            // TODO replace with virtual column query
+            cells.query_fixed(dynamic_table_tag_map[table.index], Rotation::cur()),
+        ));
+
+        let index = self.lookups.len();
+
+        self.lookups.push(lookup::Argument::new(table_map));
+
+        index
+    }
+
     fn query_fixed_index(&mut self, column: Column<Fixed>, at: Rotation) -> usize {
         // Return existing query, if it exists
         for (index, fixed_query) in self.fixed_queries.iter().enumerate() {
@@ -1262,15 +1325,15 @@ impl<F: Field> ConstraintSystem<F> {
     }
 
     pub(crate) fn compress_dynamic_table_tags(
-        mut self,
+        self,
         dynamic_tables: Vec<Vec<bool>>,
     ) -> (Self, Vec<Vec<F>>)
     where
         F: PrimeField,
     {
-        assert!(self.dynamic_table_tag_map.is_empty());
+        // assert!(self.dynamic_table_tag_map.is_empty());
         // TODO compress
-        self.dynamic_table_tag_map = vec![self.fixed_column(); self.dynamic_tables.len()];
+        // self.dynamic_table_tag_map = vec![self.fixed_column(); self.dynamic_tables.len()];
 
         (
             self,
@@ -1429,7 +1492,10 @@ impl<F: Field> ConstraintSystem<F> {
                 .chain(advice_columns.iter().map(|f| Column::<Any>::from(*f)))
                 .collect(),
         );
-        DynamicTable { index }
+        DynamicTable {
+            index,
+            tag_column: self.fixed_column(),
+        }
     }
 
     /// Allocates a new fixed column that can be used in a lookup table.
