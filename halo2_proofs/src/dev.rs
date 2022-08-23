@@ -1136,6 +1136,33 @@ mod tests {
             table: DynamicTable,
         }
 
+        impl DynLookupCircuitConfig {
+            fn assign_lookups(
+                self: &Self,
+                layouter: &mut impl Layouter<Fp>,
+                lookup: impl Iterator<Item = usize> + Clone,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "lookup",
+                    |mut region| {
+                        // Enable the lookup on rows
+                        for i in lookup.clone() {
+                            self.q.enable(&mut region, i)?;
+
+                            region.assign_advice(
+                                || "",
+                                self.a,
+                                i,
+                                || Value::known(Fp::from(i as u64)),
+                            )?;
+                        }
+
+                        Ok(())
+                    },
+                )
+            }
+        }
+
         #[test]
         fn dynamic_lookup_not_in_table_err() {
             struct DynLookupCircuit {}
@@ -1178,48 +1205,30 @@ mod tests {
                     config: Self::Config,
                     mut layouter: impl Layouter<Fp>,
                 ) -> Result<(), Error> {
+                    config.assign_lookups(&mut layouter, 0..=6)?;
+
                     for i in 0..=5 {
-                        layouter
-                            .assign_region(
-                                || "table 0..=5",
-                                |mut region| {
-                                    region.assign_advice(
-                                        || "",
-                                        config.table_vals,
-                                        0,
-                                        || Value::known(Fp::from(i as u64)),
-                                    )?;
-                                    region.include_in_lookup(|| "", &config.table, i)
-                                },
-                            )
-                            .unwrap();
-                    }
-
-                    layouter.assign_region(
-                        || "Lookup 0..=10",
-                        |mut region| {
-                            // Enable the lookup on rows 0..=10
-                            for i in 0..=10 {
-                                config.q.enable(&mut region, i)?;
-
+                        layouter.assign_region(
+                            || "table",
+                            |mut region| {
                                 region.assign_advice(
                                     || "",
-                                    config.a,
-                                    i,
+                                    config.table_vals,
+                                    0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                            }
-
-                            Ok(())
-                        },
-                    )
+                                region.include_in_lookup(|| "", &config.table, i)
+                            },
+                        )?;
+                    }
+                    Ok(())
                 }
             }
 
             MockProver::run(K, &DynLookupCircuit {}, vec![])
                 .unwrap()
                 .verify()
-                .expect_err("The table only contains 0..=5, but lookups on 0..=10 succeeded");
+                .expect_err("The table only contains 0..=5, but lookups on 0..=6 succeeded");
         }
 
         #[test]
@@ -1264,42 +1273,24 @@ mod tests {
                     config: Self::Config,
                     mut layouter: impl Layouter<Fp>,
                 ) -> Result<(), Error> {
+                    config.assign_lookups(&mut layouter, 0..=5)?;
+
                     for i in 0..=5 {
-                        layouter
-                            .assign_region(
-                                || "table 0..=5",
-                                |mut region| {
-                                    region.assign_advice(
-                                        || "",
-                                        config.table_vals,
-                                        0,
-                                        || Value::known(Fp::from(i as u64)),
-                                    )
-                                    // We should error since the table is empty without this line.
-                                    // region.include_in_lookup(|| "", &config.table, i)
-                                },
-                            )
-                            .unwrap();
-                    }
-
-                    layouter.assign_region(
-                        || "Lookup 0..=5",
-                        |mut region| {
-                            // Enable the lookup on rows 0..=5
-                            for i in 0..=5 {
-                                config.q.enable(&mut region, i)?;
-
+                        layouter.assign_region(
+                            || "table 0..=5",
+                            |mut region| {
                                 region.assign_advice(
                                     || "",
-                                    config.a,
-                                    i,
+                                    config.table_vals,
+                                    0,
                                     || Value::known(Fp::from(i as u64)),
-                                )?;
-                            }
-
-                            Ok(())
-                        },
-                    )
+                                )
+                                // We should error since the table is empty without this line.
+                                // region.include_in_lookup(|| "", &config.table, i)
+                            },
+                        )?;
+                    }
+                    Ok(())
                 }
             }
 
