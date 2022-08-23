@@ -98,7 +98,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        self.dynamic_tables[table.index][row] = true;
+        self.dynamic_tables[table.index.0][row] = true;
 
         Ok(())
     }

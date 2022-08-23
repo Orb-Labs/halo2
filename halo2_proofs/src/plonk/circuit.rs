@@ -4,6 +4,7 @@ use ff::{Field, PrimeField};
 use pasta_curves::arithmetic::FieldExt;
 use std::iter;
 use std::marker::PhantomData;
+use std::ops::Index;
 use std::{
     convert::TryFrom,
     ops::{Neg, Sub},
@@ -334,21 +335,32 @@ impl TableColumn {
 }
 
 /// TODO
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
     /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
-    /// The index also serves as this dynamic table's unique tag value.
-    pub(crate) index: usize,
+    /// The index+1 also serves as this dynamic table's unique tag value.
+    pub(crate) index: DynamicTableIndex,
     // TODO replace with virtual column expression
     pub(crate) tag_column: Column<Fixed>,
+    pub(crate) columns: Vec<Column<Any>>,
+}
+
+/// TODO
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct DynamicTableIndex(pub(crate) usize);
+
+impl DynamicTableIndex {
+    pub(crate) fn tag(self) -> u64 {
+        self.0 as u64 + 1
+    }
 }
 
 /// TODO
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTableColumn<'table> {
-    pub(crate) index: usize,
+    pub(crate) index: DynamicTableIndex,
     column: Column<Any>,
-    table: PhantomData<&'table ()>,
+    table: PhantomData<*mut &'table ()>,
 }
 
 impl DynamicTableColumn<'_> {
@@ -371,6 +383,24 @@ impl DynamicTable {
         AR: Into<String>,
     {
         region.include_in_lookup(annotation, self, offset)
+    }
+
+    /// Acquire a `DynamicTableColumn` for use in a lookup.
+    /// Will return `None` if the Dynamic table does not contain the column.
+    pub fn table_column<'table>(
+        &'table self,
+        column: Column<Any>,
+    ) -> Option<DynamicTableColumn<'table>> {
+        if self.columns.contains(&column) {
+            Some(DynamicTableColumn {
+                index: self.index,
+                column,
+                table: PhantomData,
+            })
+        } else {
+            // TODO replace with Result::Error
+            None
+        }
     }
 }
 
@@ -1143,11 +1173,12 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// `table_map` returns a map between input expressions and the table columns
     /// they need to match.
-    pub fn lookup_dynamic<'table>(
+    pub fn lookup_dynamic(
         &mut self,
-        table: &'table DynamicTable,
-        table_map: impl FnOnce(
+        table: &DynamicTable,
+        table_map: impl for<'table> FnOnce(
             &mut VirtualCells<'_, F>,
+            &'table DynamicTable,
         ) -> Vec<(Expression<F>, DynamicTableColumn<'table>)>,
     ) -> usize
     where
@@ -1155,7 +1186,7 @@ impl<F: Field> ConstraintSystem<F> {
     {
         let dynamic_table_tag_map = self.dynamic_table_tag_map.clone();
         let mut cells = VirtualCells::new(self);
-        let mut table_map: Vec<_> = table_map(&mut cells)
+        let mut table_map: Vec<_> = table_map(&mut cells, table)
             .into_iter()
             .map(|(input, table)| {
                 if input.contains_simple_selector() {
@@ -1169,9 +1200,9 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
 
         table_map.push((
-            Expression::Constant(F::from(table.index as u64)),
+            Expression::Constant(F::from(table.index.tag())),
             // TODO replace with virtual column query
-            cells.query_fixed(dynamic_table_tag_map[table.index], Rotation::cur()),
+            cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),
         ));
 
         let index = self.lookups.len();
@@ -1483,18 +1514,21 @@ impl<F: Field> ConstraintSystem<F> {
         fixed_columns: &[Column<Fixed>],
         advice_columns: &[Column<Advice>],
     ) -> DynamicTable {
-        let index = self.dynamic_tables.len();
+        let index = DynamicTableIndex(self.dynamic_tables.len());
+        let columns: Vec<_> = fixed_columns
+            .iter()
+            .map(|f| Column::<Any>::from(*f))
+            .chain(advice_columns.iter().map(|f| Column::<Any>::from(*f)))
+            .collect();
 
-        self.dynamic_tables.push(
-            fixed_columns
-                .iter()
-                .map(|f| Column::<Any>::from(*f))
-                .chain(advice_columns.iter().map(|f| Column::<Any>::from(*f)))
-                .collect(),
-        );
+        self.dynamic_tables.push(columns.clone());
+        let tag_column = self.fixed_column();
+        self.dynamic_table_tag_map.push(tag_column);
+
         DynamicTable {
             index,
-            tag_column: self.fixed_column(),
+            tag_column,
+            columns,
         }
     }
 

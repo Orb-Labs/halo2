@@ -80,7 +80,7 @@ impl<F: Field> Assignment<F> for Assembly {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        self.dynamic_tables[table.index][row] = true;
+        self.dynamic_tables[table.index.0][row] = true;
 
         Ok(())
     }

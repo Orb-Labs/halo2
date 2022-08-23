@@ -344,14 +344,14 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
     fn include_in_lookup<A, AR>(
         &mut self,
         _: A,
-        _table: &DynamicTable,
-        _row: usize,
+        table: &DynamicTable,
+        row: usize,
     ) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        // TODO
+        self.dynamic_tables[table.index.0][row] = true;
         Ok(())
     }
 
@@ -562,11 +562,11 @@ impl<F: FieldExt> MockProver<F> {
             v
         }));
 
-        let (cs, selector_polys) = prover
+        let (cs, tag_polys) = prover
             .cs
             .compress_dynamic_table_tags(prover.dynamic_tables.clone());
         prover.cs = cs;
-        prover.fixed.extend(selector_polys.into_iter().map(|poly| {
+        prover.fixed.extend(tag_polys.into_iter().map(|poly| {
             let mut v = vec![CellValue::Unassigned; n];
             for (v, p) in v.iter_mut().zip(&poly[..]) {
                 *v = CellValue::Assigned(*p);
@@ -913,8 +913,8 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            Advice, Any, Circuit, Column, ConstraintSystem, Error, Expression, Selector,
-            TableColumn,
+            Advice, Any, Circuit, Column, ConstraintSystem, DynamicTable, Error, Expression,
+            Selector, TableColumn,
         },
         poly::Rotation,
     };
@@ -1118,5 +1118,195 @@ mod tests {
                 }
             }])
         );
+    }
+
+    #[cfg(test)]
+    mod dynamic_lookups {
+        use super::*;
+
+        const K: u32 = 7;
+
+        #[derive(Clone)]
+        struct DynLookupCircuitConfig {
+            q: Selector,
+            a: Column<Advice>,
+            // Also contains zero to use as default
+            table_vals: Column<Advice>,
+            // A table containing table_vals.
+            table: DynamicTable,
+        }
+
+        #[test]
+        fn dynamic_lookup_not_in_table_err() {
+            struct DynLookupCircuit {}
+            impl Circuit<Fp> for DynLookupCircuit {
+                type Config = DynLookupCircuitConfig;
+                type FloorPlanner = SimpleFloorPlanner;
+
+                fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                    let a = meta.advice_column();
+                    let table_vals = meta.advice_column();
+                    let q = meta.complex_selector();
+                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+
+                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                        let a = cells.query_advice(a, Rotation::cur());
+                        let q = cells.query_selector(q);
+
+                        // 0 must be in a, since it's the default
+                        // If q is enabled, a must be in the table.
+                        vec![(
+                            q.clone() * a.clone(),
+                            table_ref.table_column(table_vals.into()).unwrap(),
+                        )]
+                    });
+
+                    DynLookupCircuitConfig {
+                        a,
+                        table_vals,
+                        q,
+                        table,
+                    }
+                }
+
+                fn without_witnesses(&self) -> Self {
+                    Self {}
+                }
+
+                fn synthesize(
+                    &self,
+                    config: Self::Config,
+                    mut layouter: impl Layouter<Fp>,
+                ) -> Result<(), Error> {
+                    for i in 0..=5 {
+                        layouter
+                            .assign_region(
+                                || "table 0..=5",
+                                |mut region| {
+                                    region.assign_advice(
+                                        || "",
+                                        config.table_vals,
+                                        0,
+                                        || Value::known(Fp::from(i as u64)),
+                                    )?;
+                                    region.include_in_lookup(|| "", &config.table, i)
+                                },
+                            )
+                            .unwrap();
+                    }
+
+                    layouter.assign_region(
+                        || "Lookup 0..=10",
+                        |mut region| {
+                            // Enable the lookup on rows 0..=10
+                            for i in 0..=10 {
+                                config.q.enable(&mut region, i)?;
+
+                                region.assign_advice(
+                                    || "",
+                                    config.a,
+                                    i,
+                                    || Value::known(Fp::from(i as u64)),
+                                )?;
+                            }
+
+                            Ok(())
+                        },
+                    )
+                }
+            }
+
+            MockProver::run(K, &DynLookupCircuit {}, vec![])
+                .unwrap()
+                .verify()
+                .expect_err("The table only contains 0..=5, but lookups on 0..=10 succeeded");
+        }
+
+        #[test]
+        fn dynamic_lookup_no_rows_included() {
+            struct DynLookupCircuit {}
+            impl Circuit<Fp> for DynLookupCircuit {
+                type Config = DynLookupCircuitConfig;
+                type FloorPlanner = SimpleFloorPlanner;
+
+                fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                    let a = meta.advice_column();
+                    let table_vals = meta.advice_column();
+                    let q = meta.complex_selector();
+                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+
+                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                        let a = cells.query_advice(a, Rotation::cur());
+                        let q = cells.query_selector(q);
+
+                        // 0 must be in a, since it's the default
+                        // If q is enabled, a must be in the table.
+                        vec![(
+                            q.clone() * a.clone(),
+                            table_ref.table_column(table_vals.into()).unwrap(),
+                        )]
+                    });
+
+                    DynLookupCircuitConfig {
+                        a,
+                        table_vals,
+                        q,
+                        table,
+                    }
+                }
+
+                fn without_witnesses(&self) -> Self {
+                    Self {}
+                }
+
+                fn synthesize(
+                    &self,
+                    config: Self::Config,
+                    mut layouter: impl Layouter<Fp>,
+                ) -> Result<(), Error> {
+                    for i in 0..=5 {
+                        layouter
+                            .assign_region(
+                                || "table 0..=5",
+                                |mut region| {
+                                    region.assign_advice(
+                                        || "",
+                                        config.table_vals,
+                                        0,
+                                        || Value::known(Fp::from(i as u64)),
+                                    )
+                                    // We should error since the table is empty without this line.
+                                    // region.include_in_lookup(|| "", &config.table, i)
+                                },
+                            )
+                            .unwrap();
+                    }
+
+                    layouter.assign_region(
+                        || "Lookup 0..=5",
+                        |mut region| {
+                            // Enable the lookup on rows 0..=5
+                            for i in 0..=5 {
+                                config.q.enable(&mut region, i)?;
+
+                                region.assign_advice(
+                                    || "",
+                                    config.a,
+                                    i,
+                                    || Value::known(Fp::from(i as u64)),
+                                )?;
+                            }
+
+                            Ok(())
+                        },
+                    )
+                }
+            }
+
+            MockProver::run(K, &DynLookupCircuit {}, vec![])
+                .unwrap()
+                .verify()
+                .expect_err("We did not include anything in the table, but the lookup succeeded");
+        }
     }
 }
