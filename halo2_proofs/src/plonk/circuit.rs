@@ -1200,9 +1200,10 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
 
         table_map.push((
-            Expression::Constant(F::from(table.index.tag())),
+            Expression::Constant(F::from(456)),
+            // Expression::Constant(F::from(table.index.tag())),
             // TODO replace with virtual column query
-            cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),
+            cells.query_any(dynamic_table_tag_map[table.index.0], Rotation::cur()),
         ));
 
         let index = self.lookups.len();
@@ -1370,7 +1371,7 @@ impl<F: Field> ConstraintSystem<F> {
             self,
             dynamic_tables
                 .into_iter()
-                .map(|r| r.into_iter().map(|t| F::from(t as u64)).collect())
+                .map(|r| r.into_iter().map(|t| F::from(5)).collect())
                 .collect(),
         )
     }

@@ -1227,8 +1227,88 @@ mod tests {
 
             MockProver::run(K, &DynLookupCircuit {}, vec![])
                 .unwrap()
+                .verify().unwrap();
+        }
+
+
+        #[test]
+        fn dynamic_lookup() {
+            struct DynLookupCircuit {}
+            impl Circuit<Fp> for DynLookupCircuit {
+                type Config = DynLookupCircuitConfig;
+                type FloorPlanner = SimpleFloorPlanner;
+
+                fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                    let a = meta.advice_column();
+                    let table_vals = meta.advice_column();
+                    let q = meta.complex_selector();
+                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+
+                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                        let a = cells.query_advice(a, Rotation::cur());
+                        let q = cells.query_selector(q);
+
+                        // 0 must be in a, since it's the default
+                        // If q is enabled, a must be in the table.
+                        vec![(
+                            q.clone() * a.clone(),
+                            table_ref.table_column(table_vals.into()).unwrap(),
+                        )]
+                    });
+
+                    DynLookupCircuitConfig {
+                        a,
+                        table_vals,
+                        q,
+                        table,
+                    }
+                }
+
+                fn without_witnesses(&self) -> Self {
+                    Self {}
+                }
+
+                fn synthesize(
+                    &self,
+                    config: Self::Config,
+                    mut layouter: impl Layouter<Fp>,
+                ) -> Result<(), Error> {
+                    config.assign_lookups(&mut layouter, 0..=6)?;
+
+                    for i in 0..=5 {
+                        layouter.assign_region(
+                            || "table",
+                            |mut region| {
+                                region.assign_advice(
+                                    || "",
+                                    config.table_vals,
+                                    0,
+                                    || Value::known(Fp::from(i as u64)),
+                                )?;
+                                region.include_in_lookup(|| "", &config.table, i)
+                            },
+                        )?;
+                    }
+                    Ok(())
+                }
+            }
+
+            MockProver::run(K, &DynLookupCircuit {}, vec![])
+                .unwrap()
                 .verify()
                 .expect_err("The table only contains 0..=5, but lookups on 0..=6 succeeded");
+            // let prover = MockProver::run(K, &DynLookupCircuit {}, vec![]).unwrap();
+
+            // assert_eq!(
+            //     prover.verify(),
+            //     Err(vec![VerifyFailure::Lookup {
+            //         lookup_index: 0,
+            //         location: FailureLocation::InRegion {
+            //             region: (2, "Faulty synthesis").into(),
+            //             offset: 1,
+            //         }
+            //     }])
+            // );
         }
 
         #[test]
@@ -1298,6 +1378,132 @@ mod tests {
                 .unwrap()
                 .verify()
                 .expect_err("We did not include anything in the table, but the lookup succeeded");
+        }
+    }
+
+    #[cfg(test)]
+    mod even_odd_dyn_tables {
+        use super::*;
+
+        const K: u32 = 7;
+
+        #[derive(Clone)]
+        struct EvenOddCircuitConfig {
+            is_odd: Selector,
+            is_even: Selector,
+            a: Column<Advice>,
+            // starts at zero to use as default
+            table_vals: Column<Advice>,
+            even: DynamicTable,
+            odd: DynamicTable,
+        }
+
+        #[test]
+        fn even_odd_dyn_tables() {
+            struct DynLookupCircuit {}
+            impl Circuit<Fp> for DynLookupCircuit {
+                type Config = EvenOddCircuitConfig;
+                type FloorPlanner = SimpleFloorPlanner;
+
+                fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                    let a = meta.advice_column();
+                    let table_vals = meta.advice_column();
+                    let is_even = meta.complex_selector();
+                    let is_odd = meta.complex_selector();
+                    let even = meta.create_dynamic_table(&[], &[table_vals]);
+                    // let odd = meta.create_dynamic_table(&[], &[table_vals]);
+                    let odd = even.clone();
+
+                    meta.lookup_dynamic(&even, |cells, table_ref| {
+                        let a = cells.query_advice(a, Rotation::cur());
+                        let is_even = cells.query_selector(is_even);
+
+                        vec![(
+                            Expression::Constant(Fp::zero()) * is_even.clone() * a,
+                            table_ref.table_column(table_vals.into()).unwrap(),
+                        )]
+                    });
+
+                    // meta.lookup_dynamic(&odd, |cells, table_ref| {
+                    //     let a = cells.query_advice(a, Rotation::cur());
+                    //     let is_odd = cells.query_selector(is_odd);
+
+                    //     vec![(
+                    //         is_odd.clone() * a,
+                    //         table_ref.table_column(table_vals.into()).unwrap(),
+                    //     )]
+                    // });
+
+                    EvenOddCircuitConfig {
+                        a,
+                        table_vals,
+                        is_even,
+                        is_odd,
+                        even,
+                        odd,
+                    }
+                }
+
+                fn without_witnesses(&self) -> Self {
+                    Self {}
+                }
+
+                fn synthesize(
+                    &self,
+                    config: Self::Config,
+                    mut layouter: impl Layouter<Fp>,
+                ) -> Result<(), Error> {
+                    for i in 0..=5 {
+                        layouter.assign_region(
+                            || "lookup",
+                            |mut region| {
+                                // Enable the lookup on rows
+                                // let sel = if i % 2 == 0 {
+                                //     config.is_even
+                                // } else {
+                                //     config.is_odd
+                                // };
+                                // sel.enable(&mut region, i)?;
+
+                                region.assign_advice(
+                                    || "",
+                                    config.a,
+                                    i,
+                                    || Value::known(Fp::from(i as u64)),
+                                )
+                            },
+                        )?;
+                    }
+                    layouter.assign_region(
+                        || "table",
+                        |mut region| {
+                            for i in 0..=5 {
+                                region.assign_advice(
+                                    || "",
+                                    config.table_vals,
+                                    0,
+                                    || Value::known(Fp::from(i as u64)),
+                                )?;
+
+                                let table = if i % 2 == 0 {
+                                    &config.even
+                                } else {
+                                    &config.odd
+                                };
+                                region.include_in_lookup(|| "", table, i)?;
+                            }
+                            Ok(())
+                        },
+                    )?;
+                    Ok(())
+                }
+            }
+
+            MockProver::run(K, &DynLookupCircuit {}, vec![])
+                .unwrap()
+                .verify()
+                .unwrap();
+            // .expect_err("The table only contains 0..=5, but lookups on 0..=6 succeeded");
         }
     }
 }
