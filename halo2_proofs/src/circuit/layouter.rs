@@ -238,7 +238,7 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
         offset: usize,
     ) -> Result<(), Error> {
         // Track the tag's fixed column as part of the region's shape.
-        self.columns.insert((table).into());
+        self.columns.insert(table.into());
         self.row_count = cmp::max(self.row_count, offset + 1);
         Ok(())
     }

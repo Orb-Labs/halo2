@@ -404,6 +404,21 @@ impl DynamicTable {
     }
 }
 
+/// Gate a dynamic lookup with a selector expression.
+/// The table tag, and all lookup expressions will be multiplied by the selector expression.
+///
+#[derive(Debug)]
+pub struct DynamicTableMap<'table, F> {
+    /// The table tag, and all lookup expressions will be multiplied by the selector expression.
+    /// ## Safety
+    ///
+    /// The selector expression must evalute to 1 or 0.
+    /// Otherwise you may lookup values in a diffrent lookup table.
+    pub selector: Expression<F>,
+    /// A map of lookup expressions to table columns
+    pub table_map: Vec<(Expression<F>, DynamicTableColumn<'table>)>,
+}
+
 /// This trait allows a [`Circuit`] to direct some backend to assign a witness
 /// for a constraint system.
 pub trait Assignment<F: Field> {
@@ -1179,14 +1194,18 @@ impl<F: Field> ConstraintSystem<F> {
         table_map: impl for<'table> FnOnce(
             &mut VirtualCells<'_, F>,
             &'table DynamicTable,
-        ) -> Vec<(Expression<F>, DynamicTableColumn<'table>)>,
+        ) -> DynamicTableMap<'table, F>,
     ) -> usize
     where
         F: PrimeField,
     {
         let dynamic_table_tag_map = self.dynamic_table_tag_map.clone();
         let mut cells = VirtualCells::new(self);
-        let mut table_map: Vec<_> = table_map(&mut cells, table)
+        let DynamicTableMap {
+            selector,
+            table_map,
+        } = table_map(&mut cells, table);
+        let mut table_map: Vec<_> = table_map
             .into_iter()
             .map(|(input, table)| {
                 if input.contains_simple_selector() {
@@ -1195,15 +1214,15 @@ impl<F: Field> ConstraintSystem<F> {
 
                 let table = cells.query_any(table.column(), Rotation::cur());
 
-                (input, table)
+                (selector.clone() * input, table)
             })
             .collect();
 
         table_map.push((
-            Expression::Constant(F::from(456)),
-            // Expression::Constant(F::from(table.index.tag())),
+            // Expression::Constant(F::one()),
+            selector * Expression::Constant(F::from(table.index.tag())),
             // TODO replace with virtual column query
-            cells.query_any(dynamic_table_tag_map[table.index.0], Rotation::cur()),
+            cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),
         ));
 
         let index = self.lookups.len();
@@ -1371,7 +1390,8 @@ impl<F: Field> ConstraintSystem<F> {
             self,
             dynamic_tables
                 .into_iter()
-                .map(|r| r.into_iter().map(|t| F::from(5)).collect())
+                // TODO this should not work
+                .map(|r| r.into_iter().map(|t| F::from(t as u64)).collect())
                 .collect(),
         )
     }
