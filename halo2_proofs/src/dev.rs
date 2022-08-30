@@ -289,7 +289,7 @@ pub struct MockProver<F: Group + Field> {
     instance: Vec<Vec<F>>,
 
     selectors: Vec<Vec<bool>>,
-    dynamic_tables: Vec<Vec<bool>>,
+    dynamic_tables: Vec<Vec<u64>>,
 
     permutation: permutation::keygen::Assembly,
 
@@ -351,7 +351,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        self.dynamic_tables[table.index.0][row] = true;
+        self.dynamic_tables[table.index.0][row] = table.index.tag();
         Ok(())
     }
 
@@ -517,7 +517,7 @@ impl<F: FieldExt> MockProver<F> {
         // Fixed columns contain no blinding factors.
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
-        let dynamic_tables = vec![vec![false; n]; cs.dynamic_tables.len()];
+        let dynamic_tables = vec![vec![0; n]; cs.dynamic_tables.len()];
         // Advice columns contain blinding factors.
         let blinding_factors = cs.blinding_factors();
         let usable_rows = n - (blinding_factors + 1);
@@ -1525,6 +1525,7 @@ mod tests {
         #[derive(Clone)]
         struct EvenOddCircuitConfig {
             is_even: Selector,
+            is_odd: Selector,
             a: Column<Advice>,
             // starts at zero to use as default
             table_vals: Column<Advice>,
@@ -1543,8 +1544,9 @@ mod tests {
                     let a = meta.advice_column();
                     let table_vals = meta.advice_column();
                     let is_even = meta.complex_selector();
+                    let is_odd = meta.complex_selector();
                     let even = meta.create_dynamic_table(&[], &[table_vals]);
-                    let odd = even.clone();
+                    let odd = meta.create_dynamic_table(&[], &[table_vals]);
 
                     meta.lookup_dynamic(&even, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());
@@ -1561,8 +1563,7 @@ mod tests {
 
                     meta.lookup_dynamic(&odd, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());
-                        let is_even = cells.query_selector(is_even);
-                        let is_odd = Expression::Constant(Fp::one()) - is_even.clone();
+                        let is_odd = cells.query_selector(is_odd);
 
                         DynamicTableMap {
                             selector: is_odd,
@@ -1577,6 +1578,7 @@ mod tests {
                         a,
                         table_vals,
                         is_even,
+                        is_odd,
                         even,
                         odd,
                     }
@@ -1598,6 +1600,8 @@ mod tests {
                                 // Enable the lookup on rows
                                 if i % 2 == 0 {
                                     config.is_even.enable(&mut region, i)?;
+                                } else {
+                                    config.is_odd.enable(&mut region, i)?;
                                 };
 
                                 region.assign_advice(

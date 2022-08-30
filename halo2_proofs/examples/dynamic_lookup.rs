@@ -4,8 +4,7 @@ use halo2_proofs::{
     pasta::Fp,
     plonk::{
         create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
-        ConstraintSystem, DynamicTable, DynamicTableMap, Error, Expression, Selector,
-        SingleVerifier,
+        ConstraintSystem, DynamicTable, DynamicTableMap, Error, Selector, SingleVerifier,
     },
     poly::{commitment::Params, Rotation},
     transcript::{Blake2bRead, Blake2bWrite},
@@ -16,114 +15,12 @@ use rand_core::OsRng;
 #[derive(Clone)]
 struct EvenOddCircuitConfig {
     is_even: Selector,
+    is_odd: Selector,
     a: Column<Advice>,
     // starts at zero to use as default
     table_vals: Column<Advice>,
     even: DynamicTable,
     odd: DynamicTable,
-}
-
-#[test]
-fn even_odd_dyn_tables() {
-    struct DynLookupCircuit {}
-    impl Circuit<Fp> for DynLookupCircuit {
-        type Config = EvenOddCircuitConfig;
-        type FloorPlanner = SimpleFloorPlanner;
-
-        fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
-            let a = meta.advice_column();
-            let table_vals = meta.advice_column();
-            let is_even = meta.complex_selector();
-            let even = meta.create_dynamic_table(&[], &[table_vals]);
-            let odd = even.clone();
-
-            meta.lookup_dynamic(&even, |cells, table_ref| {
-                let a = cells.query_advice(a, Rotation::cur());
-                let is_even = cells.query_selector(is_even);
-
-                DynamicTableMap {
-                    selector: is_even,
-                    table_map: vec![(
-                        a.clone(),
-                        table_ref.table_column(table_vals.into()).unwrap(),
-                    )],
-                }
-            });
-
-            meta.lookup_dynamic(&odd, |cells, table_ref| {
-                let a = cells.query_advice(a, Rotation::cur());
-                let is_even = cells.query_selector(is_even);
-                let is_odd = Expression::Constant(Fp::one()) - is_even.clone();
-
-                DynamicTableMap {
-                    selector: is_odd,
-                    table_map: vec![(
-                        a.clone(),
-                        table_ref.table_column(table_vals.into()).unwrap(),
-                    )],
-                }
-            });
-
-            EvenOddCircuitConfig {
-                a,
-                table_vals,
-                is_even,
-                even,
-                odd,
-            }
-        }
-
-        fn without_witnesses(&self) -> Self {
-            Self {}
-        }
-
-        fn synthesize(
-            &self,
-            config: Self::Config,
-            mut layouter: impl Layouter<Fp>,
-        ) -> Result<(), Error> {
-            for i in 0..=5 {
-                layouter.assign_region(
-                    || "lookup",
-                    |mut region| {
-                        // Enable the lookup on rows
-                        if i % 2 == 0 {
-                            config.is_even.enable(&mut region, i)?;
-                        };
-
-                        region.assign_advice(
-                            || "",
-                            config.a,
-                            i,
-                            || Value::known(Fp::from(i as u64)),
-                        )
-                    },
-                )?;
-            }
-            layouter.assign_region(
-                || "table",
-                |mut region| {
-                    for i in 0..=5 {
-                        region.assign_advice(
-                            || "",
-                            config.table_vals,
-                            i,
-                            || Value::known(Fp::from(i as u64)),
-                        )?;
-
-                        let table = if i % 2 == 0 {
-                            &config.even
-                        } else {
-                            &config.odd
-                        };
-                        table.include_row(|| "", &mut region, i)?;
-                    }
-                    Ok(())
-                },
-            )?;
-            Ok(())
-        }
-    }
 }
 
 struct DynLookupCircuit {}
@@ -135,8 +32,9 @@ impl Circuit<Fp> for DynLookupCircuit {
         let a = meta.advice_column();
         let table_vals = meta.advice_column();
         let is_even = meta.complex_selector();
+        let is_odd = meta.complex_selector();
         let even = meta.create_dynamic_table(&[], &[table_vals]);
-        let odd = even.clone();
+        let odd = meta.create_dynamic_table(&[], &[table_vals]);
 
         meta.lookup_dynamic(&even, |cells, table_ref| {
             let a = cells.query_advice(a, Rotation::cur());
@@ -153,8 +51,7 @@ impl Circuit<Fp> for DynLookupCircuit {
 
         meta.lookup_dynamic(&odd, |cells, table_ref| {
             let a = cells.query_advice(a, Rotation::cur());
-            let is_even = cells.query_selector(is_even);
-            let is_odd = Expression::Constant(Fp::one()) - is_even.clone();
+            let is_odd = cells.query_selector(is_odd);
 
             DynamicTableMap {
                 selector: is_odd,
@@ -169,6 +66,7 @@ impl Circuit<Fp> for DynLookupCircuit {
             a,
             table_vals,
             is_even,
+            is_odd,
             even,
             odd,
         }
@@ -190,6 +88,8 @@ impl Circuit<Fp> for DynLookupCircuit {
                     // Enable the lookup on rows
                     if i % 2 == 0 {
                         config.is_even.enable(&mut region, i)?;
+                    } else {
+                        config.is_odd.enable(&mut region, i)?;
                     };
 
                     region.assign_advice(|| "", config.a, i, || Value::known(Fp::from(i as u64)))

@@ -1377,7 +1377,7 @@ impl<F: Field> ConstraintSystem<F> {
 
     pub(crate) fn compress_dynamic_table_tags(
         self,
-        dynamic_tables: Vec<Vec<bool>>,
+        dynamic_tables: Vec<Vec<u64>>,
     ) -> (Self, Vec<Vec<F>>)
     where
         F: PrimeField,
@@ -1391,7 +1391,7 @@ impl<F: Field> ConstraintSystem<F> {
             dynamic_tables
                 .into_iter()
                 // TODO this should not work
-                .map(|r| r.into_iter().map(|t| F::from(t as u64)).collect())
+                .map(|r| r.into_iter().map(|t| F::from(t)).collect())
                 .collect(),
         )
     }
