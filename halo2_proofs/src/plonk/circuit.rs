@@ -370,7 +370,7 @@ impl DynamicTableColumn<'_> {
 }
 
 impl DynamicTable {
-    /// Enable this selector at the given offset within the given region.
+    /// Includes a row at `offset` in this dynamic lookup table.
     pub fn include_row<F, A, AR>(
         &self,
         annotation: A,

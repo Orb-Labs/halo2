@@ -206,7 +206,7 @@ impl<'r, F: Field> Region<'r, F> {
             .enable_selector(&|| annotation().into(), selector, offset)
     }
 
-    /// Enables a selector at the given offset.
+    /// Includes a row at `offset` in this dynamic lookup table.
     pub(crate) fn include_in_lookup<A, AR>(
         &mut self,
         annotation: A,

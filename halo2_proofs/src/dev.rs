@@ -1368,7 +1368,7 @@ mod tests {
                                     i,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                region.include_in_lookup(|| "", &config.table, i)
+                                config.table.include_row(|| "", &mut region, i)
                             },
                         )?;
                     }
@@ -1450,7 +1450,7 @@ mod tests {
                                     || Value::known(Fp::from(i as u64)),
                                 )
                                 // We should error since the table is empty without this line.
-                                // region.include_in_lookup(|| "", &config.table, i)
+                                // table.include_row(|| "", &mut region, i)?;
                             },
                         )?;
                     }
@@ -1625,7 +1625,7 @@ mod tests {
                                 } else {
                                     &config.odd
                                 };
-                                region.include_in_lookup(|| "", table, i)?;
+                                table.include_row(|| "", &mut region, i)?;
                             }
                             Ok(())
                         },
