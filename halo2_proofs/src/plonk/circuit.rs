@@ -1212,9 +1212,10 @@ impl<F: Field> ConstraintSystem<F> {
                     panic!("expression containing simple selector supplied to lookup argument");
                 }
 
-                let table = cells.query_any(table.column(), Rotation::cur());
 
-                (selector.clone() * input, table)
+                let tag_column = cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur());
+                let table = cells.query_any(table.column(), Rotation::cur());
+                (selector.clone() * tag_column.clone() * input, selector.clone() * tag_column * table)
             })
             .collect();
 
