@@ -109,6 +109,7 @@ impl<F: FieldExt> Argument<F> {
                     expression.evaluate(
                         &|scalar| poly::Ast::ConstantTerm(scalar),
                         &|_| panic!("virtual selectors are removed during optimization"),
+                        &|_| panic!("virtual columns are removed during optimization"),
                         &|query| {
                             fixed_values[query.column_index]
                                 .with_rotation(query.rotation)
@@ -138,6 +139,7 @@ impl<F: FieldExt> Argument<F> {
                     expression.evaluate(
                         &|scalar| poly::Ast::ConstantTerm(scalar),
                         &|_| panic!("virtual selectors are removed during optimization"),
+                        &|_| panic!("virtual columns are removed during optimization"),
                         &|query| {
                             fixed_cosets[query.column_index]
                                 .with_rotation(query.rotation)

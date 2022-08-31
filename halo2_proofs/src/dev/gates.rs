@@ -1,13 +1,14 @@
 use std::{
     collections::BTreeSet,
     fmt::{self, Write},
+    iter,
 };
 
 use ff::PrimeField;
 
 use crate::{
     dev::util,
-    plonk::{Circuit, ConstraintSystem},
+    plonk::{Circuit, ConstraintSystem, VirtualColumnIndex},
 };
 
 #[derive(Debug)]
@@ -119,6 +120,11 @@ impl CircuitGates {
                         expression: constraint.evaluate(
                             &util::format_value,
                             &|selector| format!("S{}", selector.0),
+                            // FIXME what short hand should we use for these variants?
+                            &|virtual_col| match virtual_col.0 {
+                                VirtualColumnIndex::TableTag(t) => format!("VT{}", t),
+                                VirtualColumnIndex::InputTag(u) => format!("VU{}", u),
+                            },
                             &|query| format!("F{}@{}", query.column_index, query.rotation.0),
                             &|query| format!("A{}@{}", query.column_index, query.rotation.0),
                             &|query| format!("I{}@{}", query.column_index, query.rotation.0),
@@ -152,7 +158,16 @@ impl CircuitGates {
                         ),
                         queries: constraint.evaluate(
                             &|_| BTreeSet::default(),
-                            &|selector| vec![format!("S{}", selector.0)].into_iter().collect(),
+                            &|selector| iter::once(format!("S{}", selector.0)).collect(),
+                            // FIXME what short hand should we use for these variants?
+                            &|virtual_col| match virtual_col.0 {
+                                VirtualColumnIndex::TableTag(t) => {
+                                    iter::once(format!("VT{}", t)).collect()
+                                }
+                                VirtualColumnIndex::InputTag(u) => {
+                                    iter::once(format!("VU{}", u)).collect()
+                                }
+                            },
                             &|query| {
                                 vec![format!("F{}@{}", query.column_index, query.rotation.0)]
                                     .into_iter()
@@ -190,6 +205,7 @@ impl CircuitGates {
             .flat_map(|gate| {
                 gate.polynomials().iter().map(|poly| {
                     poly.evaluate(
+                        &|_| (0, 0, 0),
                         &|_| (0, 0, 0),
                         &|_| (0, 0, 0),
                         &|_| (0, 0, 0),

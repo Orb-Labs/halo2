@@ -59,6 +59,7 @@ impl FailureLocation {
                 expression.evaluate(
                     &|_| vec![],
                     &|_| panic!("virtual selectors are removed during optimization"),
+                    &|_| panic!("virtual columns are removed during optimization"),
                     &|query| vec![cs.fixed_queries[query.index].0.into()],
                     &|query| vec![cs.advice_queries[query.index].0.into()],
                     &|query| vec![cs.instance_queries[query.index].0.into()],
@@ -349,6 +350,7 @@ fn render_constraint_not_satisfied<F: Field>(
     }
 }
 
+// TODO handle dynamic lookups
 /// Renders `VerifyFailure::Lookup`.
 ///
 /// ```text
@@ -391,6 +393,7 @@ fn render_lookup<F: FieldExt>(
         expr.evaluate(
             &|_| panic!("no constants in table expressions"),
             &|_| panic!("no selectors in table expressions"),
+            &|_| panic!("no virtual columns in table expressions"),
             &|query| format!("F{}", query.column_index),
             &|_| panic!("no advice columns in table expressions"),
             &|_| panic!("no instance columns in table expressions"),
@@ -441,6 +444,7 @@ fn render_lookup<F: FieldExt>(
         let cell_values = input.evaluate(
             &|_| BTreeMap::default(),
             &|_| panic!("virtual selectors are removed during optimization"),
+            &|_| panic!("virtual columns are removed during optimization"),
             &cell_value(
                 Any::Fixed,
                 &util::load(n, row, &cs.fixed_queries, &prover.fixed),

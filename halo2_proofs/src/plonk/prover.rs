@@ -567,6 +567,7 @@ pub fn create_proof<
                             expr.evaluate(
                                 &poly::Ast::ConstantTerm,
                                 &|_| panic!("virtual selectors are removed during optimization"),
+                                &|_| panic!("virtual columns are removed during optimization"),
                                 &|query| {
                                     fixed_cosets[query.column_index]
                                         .with_rotation(query.rotation)
