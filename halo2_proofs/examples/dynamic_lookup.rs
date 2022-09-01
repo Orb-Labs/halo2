@@ -36,18 +36,18 @@ impl Circuit<Fp> for DynLookupCircuit {
         let even = meta.create_dynamic_table(&[], &[table_vals]);
         let odd = meta.create_dynamic_table(&[], &[table_vals]);
 
-        meta.lookup_dynamic(&even, |cells, table_ref| {
-            let a = cells.query_advice(a, Rotation::cur());
-            let is_even = cells.query_selector(is_even);
+        // meta.lookup_dynamic(&even, |cells, table_ref| {
+        //     let a = cells.query_advice(a, Rotation::cur());
+        //     let is_even = cells.query_selector(is_even);
 
-            DynamicTableMap {
-                selector: is_even,
-                table_map: vec![(
-                    a.clone(),
-                    table_ref.table_column(table_vals.into()).unwrap(),
-                )],
-            }
-        });
+        //     DynamicTableMap {
+        //         selector: is_even,
+        //         table_map: vec![(
+        //             a.clone(),
+        //             table_ref.table_column(table_vals.into()).unwrap(),
+        //         )],
+        //     }
+        // });
 
         meta.lookup_dynamic(&odd, |cells, table_ref| {
             let a = cells.query_advice(a, Rotation::cur());
@@ -83,16 +83,16 @@ impl Circuit<Fp> for DynLookupCircuit {
     ) -> Result<(), Error> {
         for i in 0..=5 {
             layouter.assign_region(
-                || "lookup",
+                || format!("lookup: {}", i),
                 |mut region| {
                     // Enable the lookup on rows
                     if i % 2 == 0 {
-                        config.is_even.enable(&mut region, i)?;
+                        config.is_even.enable(&mut region, 0)?;
                     } else {
-                        config.is_odd.enable(&mut region, i)?;
+                        config.is_odd.enable(&mut region, 0)?;
                     };
 
-                    region.assign_advice(|| "", config.a, i, || Value::known(Fp::from(i as u64)))
+                    region.assign_advice(|| "", config.a, 0, || Value::known(Fp::from(i as u64)))
                 },
             )?;
         }

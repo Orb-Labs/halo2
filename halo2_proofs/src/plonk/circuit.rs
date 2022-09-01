@@ -1212,15 +1212,12 @@ impl<F: Field> ConstraintSystem<F> {
                     panic!("expression containing simple selector supplied to lookup argument");
                 }
 
-
-                let tag_column = cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur());
-                let table = cells.query_any(table.column(), Rotation::cur());
-                (selector.clone() * tag_column.clone() * input, selector.clone() * tag_column * table)
+                let table_query = cells.query_any(table.column(), Rotation::cur());
+                (selector.clone() * input, selector.clone() * table_query)
             })
             .collect();
 
         table_map.push((
-            // Expression::Constant(F::one()),
             selector * Expression::Constant(F::from(table.index.tag())),
             // TODO replace with virtual column query
             cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),

@@ -1143,22 +1143,22 @@ mod tests {
 
         impl DynLookupCircuitConfig {
             fn assign_lookups(
-                self: &Self,
+                &self,
                 layouter: &mut impl Layouter<Fp>,
                 lookup: impl Iterator<Item = usize> + Clone,
             ) -> Result<(), Error> {
                 layouter.assign_region(
-                    || "lookup",
+                    || "lookups",
                     |mut region| {
                         // Enable the lookup on rows
-                        for i in lookup.clone() {
-                            self.q.enable(&mut region, i)?;
+                        for (offset, val) in lookup.clone().enumerate() {
+                            self.q.enable(&mut region, offset)?;
 
                             region.assign_advice(
                                 || "",
                                 self.a,
-                                i,
-                                || Value::known(Fp::from(i as u64)),
+                                dbg!(offset),
+                                || Value::known(Fp::from(val as u64)),
                             )?;
                         }
 
@@ -1289,15 +1289,15 @@ mod tests {
 
                     for i in 0..=5 {
                         layouter.assign_region(
-                            || "table",
+                            || format!("table {}", i),
                             |mut region| {
                                 region.assign_advice(
                                     || "",
                                     config.table_vals,
-                                    i,
+                                    0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                region.include_in_lookup(|| "", &config.table, i)?;
+                                region.include_in_lookup(|| "", &config.table, 0)?;
                                 Ok(())
                             },
                         )?;
@@ -1360,15 +1360,15 @@ mod tests {
 
                     for i in 0..=5 {
                         layouter.assign_region(
-                            || "table",
+                            || format!("table {}", i),
                             |mut region| {
                                 region.assign_advice(
                                     || "",
                                     config.table_vals,
-                                    i,
+                                    0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                config.table.include_row(|| "", &mut region, i)
+                                config.table.include_row(|| "", &mut region, 0)
                             },
                         )?;
                     }
@@ -1386,7 +1386,7 @@ mod tests {
                 VerifyFailure::Lookup {
                     lookup_index: 0,
                     location: FailureLocation::InRegion {
-                        region: (0, "lookup").into(),
+                        region: (0, "lookups").into(),
                         offset: 6,
                     }
                 }
@@ -1441,16 +1441,16 @@ mod tests {
 
                     for i in 0..=5 {
                         layouter.assign_region(
-                            || "table 0..=5",
+                            || format!("table {}", i),
                             |mut region| {
                                 region.assign_advice(
                                     || "",
                                     config.table_vals,
-                                    i,
+                                    0,
                                     || Value::known(Fp::from(i as u64)),
                                 )
                                 // We should error since the table is empty without this line.
-                                // table.include_row(|| "", &mut region, i)?;
+                                // table.include_row(|| "", &mut region, 0)?;
                             },
                         )?;
                     }
@@ -1470,42 +1470,42 @@ mod tests {
                     Lookup {
                         lookup_index: 0,
                         location: InRegion {
-                            region: (0, "lookup",).into(),
+                            region: (0, "lookups",).into(),
                             offset: 0,
                         },
                     },
                     Lookup {
                         lookup_index: 0,
                         location: InRegion {
-                            region: (0, "lookup",).into(),
+                            region: (0, "lookups",).into(),
                             offset: 1,
                         },
                     },
                     Lookup {
                         lookup_index: 0,
                         location: InRegion {
-                            region: (0, "lookup",).into(),
+                            region: (0, "lookups",).into(),
                             offset: 2,
                         },
                     },
                     Lookup {
                         lookup_index: 0,
                         location: InRegion {
-                            region: (0, "lookup",).into(),
+                            region: (0, "lookups",).into(),
                             offset: 3,
                         },
                     },
                     Lookup {
                         lookup_index: 0,
                         location: InRegion {
-                            region: (0, "lookup",).into(),
+                            region: (0, "lookups",).into(),
                             offset: 4,
                         },
                     },
                     Lookup {
                         lookup_index: 0,
                         location: InRegion {
-                            region: (0, "lookup",).into(),
+                            region: (0, "lookups",).into(),
                             offset: 5,
                         },
                     },
@@ -1595,19 +1595,19 @@ mod tests {
                 ) -> Result<(), Error> {
                     for i in 0..=5 {
                         layouter.assign_region(
-                            || "lookup",
+                            || format!("lookup {}", i),
                             |mut region| {
                                 // Enable the lookup on rows
                                 if i % 2 == 0 {
-                                    config.is_even.enable(&mut region, i)?;
+                                    config.is_even.enable(&mut region, 0)?;
                                 } else {
-                                    config.is_odd.enable(&mut region, i)?;
+                                    config.is_odd.enable(&mut region, 0)?;
                                 };
 
                                 region.assign_advice(
                                     || "",
                                     config.a,
-                                    i,
+                                    0,
                                     || Value::known(Fp::from(i as u64)),
                                 )
                             },
