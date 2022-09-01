@@ -1218,9 +1218,9 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
 
         table_map.push((
-            selector * Expression::Constant(F::from(table.index.tag())),
+            selector.clone() * Expression::Constant(F::from(table.index.tag())),
             // TODO replace with virtual column query
-            cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),
+            selector * cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),
         ));
 
         let index = self.lookups.len();
