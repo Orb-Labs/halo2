@@ -1157,7 +1157,7 @@ mod tests {
                             region.assign_advice(
                                 || "",
                                 self.a,
-                                dbg!(offset),
+                                offset,
                                 || Value::known(Fp::from(val as u64)),
                             )?;
                         }
