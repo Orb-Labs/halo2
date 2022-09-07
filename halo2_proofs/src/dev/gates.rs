@@ -8,7 +8,7 @@ use ff::PrimeField;
 
 use crate::{
     dev::util,
-    plonk::{Circuit, ConstraintSystem, VirtualColumnIndex},
+    plonk::{Circuit, ConstraintSystem, VirtualColumn},
 };
 
 #[derive(Debug)]
@@ -120,11 +120,7 @@ impl CircuitGates {
                         expression: constraint.evaluate(
                             &util::format_value,
                             &|selector| format!("S{}", selector.0),
-                            // FIXME what short hand should we use for these variants?
-                            &|virtual_col| match virtual_col.0 {
-                                VirtualColumnIndex::TableTag(t) => format!("VT{}", t),
-                                VirtualColumnIndex::InputTag(u) => format!("VU{}", u),
-                            },
+                            &|virtual_col| format!("T{}", virtual_col.0 .0),
                             &|query| format!("F{}@{}", query.column_index, query.rotation.0),
                             &|query| format!("A{}@{}", query.column_index, query.rotation.0),
                             &|query| format!("I{}@{}", query.column_index, query.rotation.0),
@@ -159,15 +155,7 @@ impl CircuitGates {
                         queries: constraint.evaluate(
                             &|_| BTreeSet::default(),
                             &|selector| iter::once(format!("S{}", selector.0)).collect(),
-                            // FIXME what short hand should we use for these variants?
-                            &|virtual_col| match virtual_col.0 {
-                                VirtualColumnIndex::TableTag(t) => {
-                                    iter::once(format!("VT{}", t)).collect()
-                                }
-                                VirtualColumnIndex::InputTag(u) => {
-                                    iter::once(format!("VU{}", u)).collect()
-                                }
-                            },
+                            &|virtual_col| iter::once(format!("V{}", virtual_col.0 .0)).collect(),
                             &|query| {
                                 vec![format!("F{}@{}", query.column_index, query.rotation.0)]
                                     .into_iter()

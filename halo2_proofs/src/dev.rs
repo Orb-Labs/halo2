@@ -566,15 +566,13 @@ impl<F: FieldExt> MockProver<F> {
             .cs
             .compress_dynamic_table_tags(prover.dynamic_tables.clone());
         prover.cs = cs;
-
-        // TODO switch back to extend pattern after we defer the tag's fixed column creation.
-        tag_polys.into_iter().enumerate().for_each(|(i, poly)| {
+        prover.fixed.extend(tag_polys.into_iter().map(|poly| {
             let mut v = vec![CellValue::Unassigned; n];
             for (v, p) in v.iter_mut().zip(&poly[..]) {
                 *v = CellValue::Assigned(*p);
             }
-            prover.fixed[prover.cs.dynamic_table_tag_map[i].index()] = v;
-        });
+            v
+        }));
 
         Ok(prover)
     }

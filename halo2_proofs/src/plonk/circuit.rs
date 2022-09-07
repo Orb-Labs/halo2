@@ -340,8 +340,6 @@ pub struct DynamicTable {
     /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
     /// The index+1 also serves as this dynamic table's unique tag value.
     pub(crate) index: DynamicTableIndex,
-    // TODO replace with virtual column expression
-    pub(crate) tag_column: Column<Fixed>,
     pub(crate) columns: Vec<Column<Any>>,
 }
 
@@ -580,15 +578,9 @@ pub trait Circuit<F: Field> {
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<F>) -> Result<(), Error>;
 }
 
-/// TODO
+/// A placeholder which will be resolved as a fixed column during optimization.
 #[derive(Clone, Copy, Debug)]
-pub struct VirtualColumn(pub(crate) VirtualColumnIndex);
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum VirtualColumnIndex {
-    TableTag(usize),
-    InputTag(usize),
-}
+pub struct VirtualColumn(pub(crate) DynamicTableIndex);
 
 /// Low-degree expression representing an identity that must hold over the committed columns.
 #[derive(Clone)]
@@ -597,8 +589,9 @@ pub enum Expression<F> {
     Constant(F),
     /// This is a virtual selector
     Selector(Selector),
-    /// A placeholder that will be resolved into a column.
-    // TODO Add input tag variant.
+    /// A placeholder which will be resolved as a fixed column during optimization.
+    /// Virtual columns are used internally by dynamic tables.
+    /// There is no way for a user to construct a virtual column.
     VirtualColumn(VirtualColumn),
     /// This is a fixed column queried at a certain relative location
     Fixed(FixedQuery),
@@ -1224,7 +1217,6 @@ impl<F: Field> ConstraintSystem<F> {
     where
         F: PrimeField,
     {
-        let dynamic_table_tag_map = self.dynamic_table_tag_map.clone();
         let mut cells = VirtualCells::new(self);
         let DynamicTableMap {
             selector,
@@ -1245,7 +1237,7 @@ impl<F: Field> ConstraintSystem<F> {
         table_map.push((
             selector.clone() * Expression::Constant(F::from(table.index.tag())),
             // TODO replace with virtual column query
-            selector * cells.query_fixed(dynamic_table_tag_map[table.index.0], Rotation::cur()),
+            selector * Expression::VirtualColumn(VirtualColumn(table.index)),
         ));
 
         let index = self.lookups.len();
@@ -1399,15 +1391,50 @@ impl<F: Field> ConstraintSystem<F> {
     }
 
     pub(crate) fn compress_dynamic_table_tags(
-        self,
+        mut self,
         dynamic_tables: Vec<Vec<u64>>,
     ) -> (Self, Vec<Vec<F>>)
     where
         F: PrimeField,
     {
-        // assert!(self.dynamic_table_tag_map.is_empty());
+        assert!(self.dynamic_table_tag_map.is_empty());
         // TODO compress
-        // self.dynamic_table_tag_map = vec![self.fixed_column(); self.dynamic_tables.len()];
+        let dynamic_table_tag_map: Vec<_> = (0..self.dynamic_tables.len())
+            .map(|_| self.fixed_column())
+            .collect();
+        let replacements: Vec<_> = dynamic_table_tag_map
+            .iter()
+            .map(|column| {
+                Expression::Fixed(FixedQuery {
+                    index: self.query_fixed_index(*column, Rotation::cur()),
+                    column_index: column.index,
+                    rotation: Rotation::cur(),
+                })
+            })
+            .collect();
+
+        self.dynamic_table_tag_map = dynamic_table_tag_map;
+
+        // Substitute virtual tag columns for the real fixed columns in all lookup expressions
+        for expr in self.lookups.iter_mut().flat_map(|lookup| {
+            lookup
+                .input_expressions
+                .iter_mut()
+                .chain(lookup.table_expressions.iter_mut())
+        }) {
+            *expr = expr.evaluate(
+                &|constant| Expression::Constant(constant),
+                &|selector| Expression::Selector(selector),
+                &|vc| replacements[vc.0 .0].clone(),
+                &|query| Expression::Fixed(query),
+                &|query| Expression::Advice(query),
+                &|query| Expression::Instance(query),
+                &|a| -a,
+                &|a, b| a + b,
+                &|a, b| a * b,
+                &|a, f| a * f,
+            );
+        }
 
         (
             self,
@@ -1567,14 +1594,8 @@ impl<F: Field> ConstraintSystem<F> {
             .collect();
 
         self.dynamic_tables.push(columns.clone());
-        let tag_column = self.fixed_column();
-        self.dynamic_table_tag_map.push(tag_column);
 
-        DynamicTable {
-            index,
-            tag_column,
-            columns,
-        }
+        DynamicTable { index, columns }
     }
 
     /// Allocates a new fixed column that can be used in a lookup table.
