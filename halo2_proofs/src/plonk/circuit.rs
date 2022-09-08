@@ -1398,10 +1398,74 @@ impl<F: Field> ConstraintSystem<F> {
         F: PrimeField,
     {
         assert!(self.dynamic_table_tag_map.is_empty());
-        // TODO compress
-        let dynamic_table_tag_map: Vec<_> = (0..self.dynamic_tables.len())
-            .map(|_| self.fixed_column())
+        assert_eq!(self.dynamic_tables.len(), dynamic_tables.len());
+
+        let exclusion_matrix = compress_selectors::exclusion_matrix(&dynamic_tables, |rows| {
+            // A tag of zero is an unassigned cell.
+            // This is safe since `DynamicTable.index.tag()` is defined as `index + 1`.
+            rows.iter().map(|tag| *tag == 0)
+        });
+
+        // This is the same algorithm used by compress_selectors::process.
+        // Could an exponential optimization be worth the cost,
+        // since compress_dynamic_table_tags is fixed for a given circuit?
+
+        // Virtual tag columns that we've added to combinations already.
+        let mut added = vec![false; dynamic_tables.len()];
+        let mut assignments: Vec<Vec<F>> = Vec::new();
+        let mut dynamic_table_tag_map = vec![None; dynamic_tables.len()];
+
+        for (i, tag_col) in dynamic_tables.iter().enumerate() {
+            if added[i] {
+                continue;
+            }
+            added[i] = true;
+            let mut combination = vec![tag_col];
+            let mut combination_added = vec![i];
+
+            // Try to find other virtual tag columns that can join this one.
+            'try_columns: for (j, _) in dynamic_tables.iter().enumerate().skip(i + 1) {
+                // Skip columns that have been added to previous combinations
+                if added[j] {
+                    continue 'try_columns;
+                }
+
+                // Is this virtual tag column excluded from co-existing in the same
+                // combination with any of the other virtual tag column so far?
+                for &i in combination_added.iter() {
+                    if exclusion_matrix[j][i] {
+                        continue 'try_columns;
+                    }
+                }
+
+                combination.push(tag_col);
+                combination_added.push(j);
+                added[j] = true;
+            }
+
+            let fixed_column = self.fixed_column();
+            for col in combination_added.iter() {
+                dynamic_table_tag_map[*col] = Some(fixed_column);
+            }
+
+            assignments.push(
+                (0..tag_col.len())
+                    .map(|i| {
+                        combination
+                            .iter()
+                            .map(|column| column[i])
+                            .sum::<u64>()
+                            .into()
+                    })
+                    .collect(),
+            )
+        }
+
+        let dynamic_table_tag_map: Vec<_> = dynamic_table_tag_map
+            .iter()
+            .map(|c| c.expect("A virtual tag column was not mapped to a fixed column"))
             .collect();
+
         let replacements: Vec<_> = dynamic_table_tag_map
             .iter()
             .map(|column| {
