@@ -51,7 +51,8 @@ struct Assembly<F: Field> {
     fixed: Vec<Polynomial<Assigned<F>, LagrangeCoeff>>,
     permutation: permutation::keygen::Assembly,
     selectors: Vec<Vec<bool>>,
-    dynamic_tables: Vec<Vec<u64>>,
+    /// A map between DynamicTable.index, and rows included.
+    dynamic_tables: Vec<Vec<bool>>,
     // A range of available rows for assignment and copies.
     usable_rows: Range<usize>,
     _marker: std::marker::PhantomData<F>,
@@ -98,7 +99,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        self.dynamic_tables[table.index.0][row] = table.index.tag();
+        self.dynamic_tables[table.index.index()][row] = true;
 
         Ok(())
     }
@@ -226,7 +227,7 @@ where
         fixed: vec![domain.empty_lagrange_assigned(); cs.num_fixed_columns],
         permutation: permutation::keygen::Assembly::new(params.n as usize, &cs.permutation),
         selectors: vec![vec![false; params.n as usize]; cs.num_selectors],
-        dynamic_tables: vec![vec![0; params.n as usize]; cs.dynamic_tables.len()],
+        dynamic_tables: vec![vec![false; params.n as usize]; cs.dynamic_tables.len()],
         usable_rows: 0..params.n as usize - (cs.blinding_factors() + 1),
         _marker: std::marker::PhantomData,
     };
@@ -295,7 +296,7 @@ where
         fixed: vec![vk.domain.empty_lagrange_assigned(); cs.num_fixed_columns],
         permutation: permutation::keygen::Assembly::new(params.n as usize, &cs.permutation),
         selectors: vec![vec![false; params.n as usize]; cs.num_selectors],
-        dynamic_tables: vec![vec![0; params.n as usize]; cs.dynamic_tables.len()],
+        dynamic_tables: vec![vec![false; params.n as usize]; cs.dynamic_tables.len()],
         usable_rows: 0..params.n as usize - (cs.blinding_factors() + 1),
         _marker: std::marker::PhantomData,
     };

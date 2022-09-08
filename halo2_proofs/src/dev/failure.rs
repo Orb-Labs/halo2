@@ -10,6 +10,7 @@ use super::{
     util::{self, AnyQuery},
     MockProver, Region,
 };
+use crate::plonk::DynamicTable;
 use crate::{
     dev::Value,
     plonk::{Any, Column, ConstraintSystem, Expression, Gate},
@@ -112,6 +113,17 @@ impl FailureLocation {
 #[derive(Debug, PartialEq)]
 pub enum VerifyFailure {
     /// A cell used in an active gate was not assigned to.
+    DynamicTableCellNotAssigned {
+        /// The tag of the table containing a unassigned cell.
+        dynamic_table: DynamicTable,
+        /// The region in which this cell should be assigned.
+        region: metadata::Region,
+        /// The column in which this cell should be assigned.
+        column: Column<Any>,
+        /// The offset (relative to the start of the region) at which this cell should be assigned.
+        offset: usize,
+    },
+    /// A cell used in an active gate was not assigned to.
     CellNotAssigned {
         /// The index of the active gate.
         gate: metadata::Gate,
@@ -176,6 +188,18 @@ pub enum VerifyFailure {
 impl fmt::Display for VerifyFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            VerifyFailure::DynamicTableCellNotAssigned {
+                dynamic_table,
+                region,
+                column,
+                offset,
+            } => {
+                write!(
+                    f,
+                    "{} includes the row at offset {} in the {}, which requires cell in column {:?} be assigned.",
+                    dynamic_table, offset, region, column
+                )
+            }
             Self::CellNotAssigned {
                 gate,
                 region,

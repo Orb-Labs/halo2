@@ -44,7 +44,8 @@ pub struct CircuitCost<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> {
 
 struct Assembly {
     selectors: Vec<Vec<bool>>,
-    dynamic_tables: Vec<Vec<u64>>,
+    /// A map between DynamicTable.index, and rows included.
+    dynamic_tables: Vec<Vec<bool>>,
 }
 
 impl<F: Field> Assignment<F> for Assembly {
@@ -80,7 +81,7 @@ impl<F: Field> Assignment<F> for Assembly {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        self.dynamic_tables[table.index.0][row] = table.index.tag();
+        self.dynamic_tables[table.index.index()][row] = true;
 
         Ok(())
     }
@@ -157,7 +158,7 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
         let config = ConcreteCircuit::configure(&mut cs);
         let mut assembly = Assembly {
             selectors: vec![vec![false; 1 << k]; cs.num_selectors],
-            dynamic_tables: vec![vec![0; 1 << k]; cs.dynamic_tables.len()],
+            dynamic_tables: vec![vec![false; 1 << k]; cs.dynamic_tables.len()],
         };
         ConcreteCircuit::FloorPlanner::synthesize(
             &mut assembly,

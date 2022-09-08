@@ -1,5 +1,6 @@
 //! Tools for developing circuits.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -289,7 +290,8 @@ pub struct MockProver<F: Group + Field> {
     instance: Vec<Vec<F>>,
 
     selectors: Vec<Vec<bool>>,
-    dynamic_tables: Vec<Vec<u64>>,
+    /// A map between DynamicTable.index, and rows included.
+    dynamic_tables: Vec<Vec<bool>>,
 
     permutation: permutation::keygen::Assembly,
 
@@ -351,7 +353,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        self.dynamic_tables[table.index.0][row] = table.index.tag();
+        self.dynamic_tables[table.index.index()][row] = true;
         Ok(())
     }
 
@@ -517,7 +519,7 @@ impl<F: FieldExt> MockProver<F> {
         // Fixed columns contain no blinding factors.
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
         let selectors = vec![vec![false; n]; cs.num_selectors];
-        let dynamic_tables = vec![vec![0; n]; cs.dynamic_tables.len()];
+        let dynamic_tables = vec![vec![false; n]; cs.dynamic_tables.len()];
         // Advice columns contain blinding factors.
         let blinding_factors = cs.blinding_factors();
         let usable_rows = n - (blinding_factors + 1);
@@ -864,6 +866,25 @@ impl<F: FieldExt> MockProver<F> {
                 })
         };
 
+        // Check that all cell included in dynamic tables are assigned.
+        let dynamic_table_errors = {
+            let tables_tag_columns = self.dynamic_tables.iter().enumerate().map(|(index, rows)| {
+                let tag_col = self.cs.dynamic_table_tag_map[index];
+                rows.iter()
+            });
+            // TODO
+            let tag_cols: BTreeSet<_> = self.cs.dynamic_table_tag_map.iter().collect();
+            // tag_cols
+            //     .iter()
+            //     .flat_map(|col| self.fixed[col.index()].iter().enumerate())
+            //     .filter_map(|(row, tag)| {
+            //         match tag {
+            //             CellValue::Assigned(tag) => Some(tag.),
+            //             _ => None,
+            //         }
+            //     });
+        };
+
         let mut errors: Vec<_> = iter::empty()
             .chain(selector_errors)
             .chain(gate_errors)
@@ -1181,7 +1202,7 @@ mod tests {
                     let a = meta.advice_column();
                     let table_vals = meta.advice_column();
                     let q = meta.complex_selector();
-                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+                    let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
                     meta.lookup_dynamic(&table, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());
@@ -1252,7 +1273,7 @@ mod tests {
                     let a = meta.advice_column();
                     let table_vals = meta.advice_column();
                     let q = meta.complex_selector();
-                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+                    let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
                     meta.lookup_dynamic(&table, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());
@@ -1323,7 +1344,7 @@ mod tests {
                     let a = meta.advice_column();
                     let table_vals = meta.advice_column();
                     let q = meta.complex_selector();
-                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+                    let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
                     meta.lookup_dynamic(&table, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());
@@ -1404,7 +1425,7 @@ mod tests {
                     let a = meta.advice_column();
                     let table_vals = meta.advice_column();
                     let q = meta.complex_selector();
-                    let table = meta.create_dynamic_table(&[], &[table_vals]);
+                    let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
                     meta.lookup_dynamic(&table, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());
@@ -1545,8 +1566,8 @@ mod tests {
                     let table_vals = meta.advice_column();
                     let is_even = meta.complex_selector();
                     let is_odd = meta.complex_selector();
-                    let even = meta.create_dynamic_table(&[], &[table_vals]);
-                    let odd = meta.create_dynamic_table(&[], &[table_vals]);
+                    let even = meta.create_dynamic_table("even", &[], &[table_vals]);
+                    let odd = meta.create_dynamic_table("odd", &[], &[table_vals]);
 
                     meta.lookup_dynamic(&even, |cells, table_ref| {
                         let a = cells.query_advice(a, Rotation::cur());

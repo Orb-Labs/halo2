@@ -33,8 +33,8 @@ impl Circuit<Fp> for DynLookupCircuit {
         let table_vals = meta.advice_column();
         let is_even = meta.complex_selector();
         let is_odd = meta.complex_selector();
-        let even = meta.create_dynamic_table(&[], &[table_vals]);
-        let odd = meta.create_dynamic_table(&[], &[table_vals]);
+        let even = meta.create_dynamic_table("even", &[], &[table_vals]);
+        let odd = meta.create_dynamic_table("odd", &[], &[table_vals]);
 
         meta.lookup_dynamic(&even, |cells, table_ref| {
             let a = cells.query_advice(a, Rotation::cur());

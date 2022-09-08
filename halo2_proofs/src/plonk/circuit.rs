@@ -1,4 +1,5 @@
 use core::cmp::max;
+use core::fmt;
 use core::ops::{Add, Mul};
 use ff::{Field, PrimeField};
 use pasta_curves::arithmetic::FieldExt;
@@ -337,19 +338,38 @@ impl TableColumn {
 /// TODO
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
+    pub(crate) name: String,
     /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
     /// The index+1 also serves as this dynamic table's unique tag value.
     pub(crate) index: DynamicTableIndex,
     pub(crate) columns: Vec<Column<Any>>,
 }
 
+impl fmt::Display for DynamicTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DynamicTable {} ('{}')", self.index.0, self.name)
+    }
+}
+
 /// TODO
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct DynamicTableIndex(pub(crate) usize);
+pub struct DynamicTableIndex(usize);
 
 impl DynamicTableIndex {
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+
     pub(crate) fn tag(self) -> u64 {
         self.0 as u64 + 1
+    }
+
+    pub(crate) fn from_tag(tag: u64) -> Option<Self> {
+        if tag == 0 {
+            None
+        } else {
+            Some(DynamicTableIndex((tag - 1).try_into().unwrap()))
+        }
     }
 }
 
@@ -1392,7 +1412,7 @@ impl<F: Field> ConstraintSystem<F> {
 
     pub(crate) fn compress_dynamic_table_tags(
         mut self,
-        dynamic_tables: Vec<Vec<u64>>,
+        dynamic_tables: Vec<Vec<bool>>,
     ) -> (Self, Vec<Vec<F>>)
     where
         F: PrimeField,
@@ -1401,9 +1421,8 @@ impl<F: Field> ConstraintSystem<F> {
         assert_eq!(self.dynamic_tables.len(), dynamic_tables.len());
 
         let exclusion_matrix = compress_selectors::exclusion_matrix(&dynamic_tables, |rows| {
-            // A tag of zero is an unassigned cell.
-            // This is safe since `DynamicTable.index.tag()` is defined as `index + 1`.
-            rows.iter().map(|tag| *tag == 0)
+            // true means the row is included in this dynamic table.
+            rows.iter().cloned()
         });
 
         // This is the same algorithm used by compress_selectors::process.
@@ -1415,16 +1434,15 @@ impl<F: Field> ConstraintSystem<F> {
         let mut assignments: Vec<Vec<F>> = Vec::new();
         let mut dynamic_table_tag_map = vec![None; dynamic_tables.len()];
 
-        for (i, tag_col) in dynamic_tables.iter().enumerate() {
+        for (i, tag_col_rows) in dynamic_tables.iter().enumerate() {
             if added[i] {
                 continue;
             }
             added[i] = true;
-            let mut combination = vec![tag_col];
-            let mut combination_added = vec![i];
+            let mut combination: Vec<_> = vec![(i, tag_col_rows)];
 
             // Try to find other virtual tag columns that can join this one.
-            'try_columns: for (j, _) in dynamic_tables.iter().enumerate().skip(i + 1) {
+            'try_columns: for (j, tag_col) in dynamic_tables.iter().enumerate().skip(i + 1) {
                 // Skip columns that have been added to previous combinations
                 if added[j] {
                     continue 'try_columns;
@@ -1432,29 +1450,35 @@ impl<F: Field> ConstraintSystem<F> {
 
                 // Is this virtual tag column excluded from co-existing in the same
                 // combination with any of the other virtual tag column so far?
-                for &i in combination_added.iter() {
-                    if exclusion_matrix[j][i] {
+                for (i, _) in combination.iter() {
+                    if exclusion_matrix[j][*i] {
                         continue 'try_columns;
                     }
                 }
 
-                combination.push(tag_col);
-                combination_added.push(j);
+                combination.push((j, tag_col));
                 added[j] = true;
             }
 
             let fixed_column = self.fixed_column();
-            for col in combination_added.iter() {
+            for (col, _) in combination.iter() {
                 dynamic_table_tag_map[*col] = Some(fixed_column);
             }
 
             assignments.push(
-                (0..tag_col.len())
+                (0..tag_col_rows.len())
                     .map(|i| {
                         combination
                             .iter()
-                            .map(|column| column[i])
-                            .sum::<u64>()
+                            .fold(0, |tag, (tag_col_index, rows)| {
+                                if rows[i] {
+                                    // Assert that only one table in the combination includes this row
+                                    assert_eq!(tag, 0);
+                                    DynamicTableIndex(*tag_col_index).tag()
+                                } else {
+                                    tag
+                                }
+                            })
                             .into()
                     })
                     .collect(),
@@ -1500,14 +1524,7 @@ impl<F: Field> ConstraintSystem<F> {
             );
         }
 
-        (
-            self,
-            dynamic_tables
-                .into_iter()
-                // TODO this should not work
-                .map(|r| r.into_iter().map(|t| F::from(t)).collect())
-                .collect(),
-        )
+        (self, assignments)
     }
 
     /// This will compress selectors together depending on their provided
@@ -1647,6 +1664,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// TODO
     pub fn create_dynamic_table(
         &mut self,
+        name: impl Into<String>,
         fixed_columns: &[Column<Fixed>],
         advice_columns: &[Column<Advice>],
     ) -> DynamicTable {
@@ -1659,7 +1677,11 @@ impl<F: Field> ConstraintSystem<F> {
 
         self.dynamic_tables.push(columns.clone());
 
-        DynamicTable { index, columns }
+        DynamicTable {
+            name: name.into(),
+            index,
+            columns,
+        }
     }
 
     /// Allocates a new fixed column that can be used in a lookup table.
