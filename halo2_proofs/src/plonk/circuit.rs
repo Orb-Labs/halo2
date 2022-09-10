@@ -363,14 +363,6 @@ impl DynamicTableIndex {
     pub(crate) fn tag(self) -> u64 {
         self.0 as u64 + 1
     }
-
-    pub(crate) fn from_tag(tag: u64) -> Option<Self> {
-        if tag == 0 {
-            None
-        } else {
-            Some(DynamicTableIndex((tag - 1).try_into().unwrap()))
-        }
-    }
 }
 
 /// TODO
@@ -1076,8 +1068,8 @@ pub struct ConstraintSystem<F: Field> {
     /// Like selector_map, but for `DynamicTable`s.
     pub(crate) dynamic_table_tag_map: Vec<Column<Fixed>>,
 
-    /// A map between `DynamicTable.index` and their columns (excluding the tag column)
-    pub(crate) dynamic_tables: Vec<Vec<Column<Any>>>,
+    /// A map between `DynamicTable.index` and `DynamicTable`,
+    pub(crate) dynamic_tables: Vec<DynamicTable>,
 
     pub(crate) gates: Vec<Gate<F>>,
     pub(crate) advice_queries: Vec<(Column<Advice>, Rotation)>,
@@ -1675,13 +1667,14 @@ impl<F: Field> ConstraintSystem<F> {
             .chain(advice_columns.iter().map(|f| Column::<Any>::from(*f)))
             .collect();
 
-        self.dynamic_tables.push(columns.clone());
-
-        DynamicTable {
+        let table = DynamicTable {
             name: name.into(),
             index,
             columns,
-        }
+        };
+
+        self.dynamic_tables.push(table.clone());
+        table
     }
 
     /// Allocates a new fixed column that can be used in a lookup table.
