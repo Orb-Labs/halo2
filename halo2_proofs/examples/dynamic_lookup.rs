@@ -44,7 +44,7 @@ impl Circuit<Fp> for DynLookupCircuit {
                 selector: is_even,
                 table_map: vec![(
                     a.clone(),
-                    table_ref.table_column(table_vals.into()).unwrap(),
+                    table_ref.table_column(table_vals).unwrap(),
                 )],
             }
         });
@@ -57,7 +57,7 @@ impl Circuit<Fp> for DynLookupCircuit {
                 selector: is_odd,
                 table_map: vec![(
                     a.clone(),
-                    table_ref.table_column(table_vals.into()).unwrap(),
+                    table_ref.table_column(table_vals).unwrap(),
                 )],
             }
         });

@@ -1252,7 +1252,7 @@ mod tests {
                             selector: q,
                             table_map: vec![(
                                 a,
-                                table_ref.table_column(table_vals.into()).unwrap(),
+                                table_ref.table_column(table_vals).unwrap(),
                             )],
                         }
                     });
@@ -1323,7 +1323,7 @@ mod tests {
                             selector: q,
                             table_map: vec![(
                                 a,
-                                table_ref.table_column(table_vals.into()).unwrap(),
+                                table_ref.table_column(table_vals).unwrap(),
                             )],
                         }
                     });
@@ -1394,7 +1394,7 @@ mod tests {
                             selector: q,
                             table_map: vec![(
                                 a,
-                                table_ref.table_column(table_vals.into()).unwrap(),
+                                table_ref.table_column(table_vals).unwrap(),
                             )],
                         }
                     });
@@ -1475,7 +1475,7 @@ mod tests {
                             selector: q,
                             table_map: vec![(
                                 a,
-                                table_ref.table_column(table_vals.into()).unwrap(),
+                                table_ref.table_column(table_vals).unwrap(),
                             )],
                         }
                     });
@@ -1616,7 +1616,7 @@ mod tests {
                             selector: is_even,
                             table_map: vec![(
                                 a.clone(),
-                                table_ref.table_column(table_vals.into()).unwrap(),
+                                table_ref.table_column(table_vals).unwrap(),
                             )],
                         }
                     });
@@ -1629,7 +1629,7 @@ mod tests {
                             selector: is_odd,
                             table_map: vec![(
                                 a.clone(),
-                                table_ref.table_column(table_vals.into()).unwrap(),
+                                table_ref.table_column(table_vals).unwrap(),
                             )],
                         }
                     });

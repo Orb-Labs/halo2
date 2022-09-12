@@ -336,22 +336,6 @@ impl TableColumn {
 }
 
 /// TODO
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct DynamicTable {
-    pub(crate) name: String,
-    /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
-    /// The index+1 also serves as this dynamic table's unique tag value.
-    pub(crate) index: DynamicTableIndex,
-    pub(crate) columns: Vec<Column<Any>>,
-}
-
-impl fmt::Display for DynamicTable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DynamicTable {} ('{}')", self.index.0, self.name)
-    }
-}
-
-/// TODO
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct DynamicTableIndex(usize);
 
@@ -379,6 +363,22 @@ impl DynamicTableColumn<'_> {
     }
 }
 
+/// TODO
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct DynamicTable {
+    pub(crate) name: String,
+    /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
+    /// The index+1 also serves as this dynamic table's unique tag value.
+    pub(crate) index: DynamicTableIndex,
+    pub(crate) columns: Vec<Column<Any>>,
+}
+
+impl fmt::Display for DynamicTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DynamicTable {} ('{}')", self.index.0, self.name)
+    }
+}
+
 impl DynamicTable {
     /// Includes a row at `offset` in this dynamic lookup table.
     pub fn include_row<F, A, AR>(
@@ -399,8 +399,9 @@ impl DynamicTable {
     /// Will return `None` if the Dynamic table does not contain the column.
     pub fn table_column<'table>(
         &'table self,
-        column: Column<Any>,
+        column: impl Into<Column<Any>>,
     ) -> Option<DynamicTableColumn<'table>> {
+        let column = column.into();
         if self.columns.contains(&column) {
             Some(DynamicTableColumn {
                 index: self.index,
@@ -1248,7 +1249,6 @@ impl<F: Field> ConstraintSystem<F> {
 
         table_map.push((
             selector.clone() * Expression::Constant(F::from(table.index.tag())),
-            // TODO replace with virtual column query
             selector * Expression::VirtualColumn(VirtualColumn(table.index)),
         ));
 
