@@ -335,13 +335,19 @@ impl TableColumn {
     }
 }
 
-/// TODO
+/// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
+/// The `index + 1` serves as this dynamic table's unique tag value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct DynamicTableIndex(usize);
 
 impl DynamicTableIndex {
     pub(crate) fn index(self) -> usize {
         self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_index(index: usize) -> Self {
+        DynamicTableIndex(index)
     }
 
     pub(crate) fn tag(self) -> u64 {
@@ -367,8 +373,6 @@ impl DynamicTableColumn<'_> {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
     pub(crate) name: String,
-    /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
-    /// The index+1 also serves as this dynamic table's unique tag value.
     pub(crate) index: DynamicTableIndex,
     pub(crate) columns: Vec<Column<Any>>,
 }

@@ -91,7 +91,7 @@ impl FailureLocation {
             .iter()
             .enumerate()
             .find(|(_, r)| {
-                let (start, end) = r.rows.unwrap();
+                let (start, end) = r.rows.expect("error");
                 // We match the region if any input columns overlap, rather than all of
                 // them, because matching complex selector columns is hard. As long as
                 // regions are rectangles, and failures occur due to assignments entirely

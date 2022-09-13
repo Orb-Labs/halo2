@@ -354,6 +354,13 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         AR: Into<String>,
     {
         self.dynamic_tables[table.index.index()][row] = true;
+
+        if let Some(region) = self.current_region.as_mut() {
+            for column in table.columns.iter() {
+                region.update_extent(*column, row);
+            }
+        }
+
         Ok(())
     }
 
@@ -905,6 +912,7 @@ impl<F: FieldExt> MockProver<F> {
                             .enumerate()
                             .filter_map(move |(row_index, r)| match r {
                                 (CellValue::Assigned(tag), true) => {
+                                    eprintln!("col: {}, row: {}, tag: {}", col_index, row_index, tag.get_lower_128());
                                     if F::from(col_index as u64 + 1) == *tag {
                                         let table = &self.cs.dynamic_tables[col_index];
                                         Some(table.columns.iter().filter_map(move |col| match col.column_type() {
@@ -1185,7 +1193,7 @@ mod tests {
 
     #[cfg(test)]
     mod dynamic_lookups {
-        use crate::plonk::DynamicTableMap;
+        use crate::plonk::{DynamicTableIndex, DynamicTableMap};
 
         use super::*;
 
@@ -1250,10 +1258,7 @@ mod tests {
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(
-                                a,
-                                table_ref.table_column(table_vals).unwrap(),
-                            )],
+                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
                         }
                     });
 
@@ -1321,10 +1326,7 @@ mod tests {
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(
-                                a,
-                                table_ref.table_column(table_vals).unwrap(),
-                            )],
+                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
                         }
                     });
 
@@ -1392,10 +1394,7 @@ mod tests {
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(
-                                a,
-                                table_ref.table_column(table_vals).unwrap(),
-                            )],
+                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
                         }
                     });
 
@@ -1473,10 +1472,7 @@ mod tests {
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(
-                                a,
-                                table_ref.table_column(table_vals).unwrap(),
-                            )],
+                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
                         }
                     });
 
@@ -1571,6 +1567,77 @@ mod tests {
                     },
                 ],)
             );
+        }
+
+        #[test]
+        fn unassigned_dynamic_table_cell() {
+            struct DynLookupCircuit {}
+            impl Circuit<Fp> for DynLookupCircuit {
+                type Config = DynLookupCircuitConfig;
+                type FloorPlanner = SimpleFloorPlanner;
+
+                fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                    let a = meta.advice_column();
+                    let table_vals = meta.advice_column();
+                    let q = meta.complex_selector();
+                    let table = meta.create_dynamic_table("table", &[], &[table_vals]);
+
+                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                        let a = cells.query_advice(a, Rotation::cur());
+                        let q = cells.query_selector(q);
+
+                        // If q is enabled, a must be in the table.
+                        DynamicTableMap {
+                            selector: q,
+                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
+                        }
+                    });
+
+                    DynLookupCircuitConfig {
+                        a,
+                        table_vals,
+                        q,
+                        table,
+                    }
+                }
+
+                fn without_witnesses(&self) -> Self {
+                    Self {}
+                }
+
+                fn synthesize(
+                    &self,
+                    config: Self::Config,
+                    mut layouter: impl Layouter<Fp>,
+                ) -> Result<(), Error> {
+                    layouter.assign_region(
+                        || "table",
+                        |mut region| {
+                            config.table.include_row(|| "", &mut region, 0)?;
+                            Ok(())
+                        },
+                    )?;
+                    Ok(())
+                }
+            }
+
+            let res = MockProver::run(K, &DynLookupCircuit {}, vec![])
+                .unwrap()
+                .verify();
+
+            assert_eq!(
+                res,
+                Err(vec![VerifyFailure::DynamicTableCellNotAssigned {
+                    dynamic_table: DynamicTable {
+                        name: "table".to_string(),
+                        index: DynamicTableIndex::from_index(0),
+                        columns: vec![Column::new(1, Any::Advice)],
+                    },
+                    region: (0, "table".to_string(),).into(),
+                    column: Column::new(1, Any::Advice),
+                    offset: 0,
+                }])
+            )
         }
     }
 
