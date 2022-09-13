@@ -4,8 +4,8 @@ use tabbycat::{AttrList, Edge, GraphBuilder, GraphType, Identity, StmtList};
 use crate::{
     circuit::Value,
     plonk::{
-        Advice, Any, Assigned, Assignment, Circuit, Column, ConstraintSystem, Error, Fixed,
-        FloorPlanner, Instance, Selector,
+        Advice, Any, Assigned, Assignment, Circuit, Column, ConstraintSystem, DynamicTable, Error,
+        Fixed, FloorPlanner, Instance, Selector,
     },
 };
 
@@ -96,6 +96,14 @@ impl<F: Field> Assignment<F> for Graph {
         AR: Into<String>,
     {
         // Do nothing; we don't care about cells in this context.
+        Ok(())
+    }
+
+    fn include_in_lookup<A, AR>(&mut self, _: A, _: &DynamicTable, _: usize) -> Result<(), Error>
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
         Ok(())
     }
 

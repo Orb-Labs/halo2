@@ -401,10 +401,7 @@ impl DynamicTable {
 
     /// Acquire a `DynamicTableColumn` for use in a lookup.
     /// Will return `None` if the Dynamic table does not contain the column.
-    pub fn table_column(
-        &self,
-        column: impl Into<Column<Any>>,
-    ) -> Option<DynamicTableColumn<'_>> {
+    pub fn table_column(&self, column: impl Into<Column<Any>>) -> Option<DynamicTableColumn<'_>> {
         let column = column.into();
         if self.columns.contains(&column) {
             Some(DynamicTableColumn {
