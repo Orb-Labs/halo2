@@ -1239,8 +1239,13 @@ impl<F: Field> ConstraintSystem<F> {
         let mut table_map: Vec<_> = table_map
             .into_iter()
             .map(|(input, table)| {
+                if selector.contains_simple_selector() {
+                    panic!("selector expression containing simple selector supplied to lookup argument");
+                }
+
+                // TODO is this needed
                 if input.contains_simple_selector() {
-                    panic!("expression containing simple selector supplied to lookup argument");
+                    panic!("input expression containing simple selector supplied to lookup argument");
                 }
 
                 let table_query = cells.query_any(table.column(), Rotation::cur());
