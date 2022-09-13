@@ -912,7 +912,6 @@ impl<F: FieldExt> MockProver<F> {
                             .enumerate()
                             .filter_map(move |(row_index, r)| match r {
                                 (CellValue::Assigned(tag), true) => {
-                                    eprintln!("col: {}, row: {}, tag: {}", col_index, row_index, tag.get_lower_128());
                                     if F::from(col_index as u64 + 1) == *tag {
                                         let table = &self.cs.dynamic_tables[col_index];
                                         Some(table.columns.iter().filter_map(move |col| match col.column_type() {
