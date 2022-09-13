@@ -177,7 +177,7 @@ impl Ord for RegionColumn {
         match (self, other) {
             (Self::Column(ref a), Self::Column(ref b)) => a.cmp(b),
             (Self::Selector(ref a), Self::Selector(ref b)) => a.0.cmp(&b.0),
-            (Self::TableTag(ref a), Self::TableTag(ref b)) => a.cmp(&b),
+            (Self::TableTag(ref a), Self::TableTag(ref b)) => a.cmp(b),
             (Self::Column(_), _) => cmp::Ordering::Less,
             (Self::Selector(_), Self::Column(_)) => cmp::Ordering::Greater,
             (Self::TableTag(_), _) => cmp::Ordering::Greater,
