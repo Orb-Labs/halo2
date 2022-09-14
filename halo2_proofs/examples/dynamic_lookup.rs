@@ -36,23 +36,23 @@ impl Circuit<Fp> for DynLookupCircuit {
         let even = meta.create_dynamic_table("even", &[], &[table_vals]);
         let odd = meta.create_dynamic_table("odd", &[], &[table_vals]);
 
-        meta.lookup_dynamic(&even, |cells, table_ref| {
+        meta.lookup_dynamic(&even, |cells| {
             let a = cells.query_advice(a, Rotation::cur());
             let is_even = cells.query_selector(is_even);
 
             DynamicTableMap {
                 selector: is_even,
-                table_map: vec![(a.clone(), table_ref.table_column(table_vals).unwrap())],
+                table_map: vec![(a.clone(), table_vals.into())],
             }
         });
 
-        meta.lookup_dynamic(&odd, |cells, table_ref| {
+        meta.lookup_dynamic(&odd, |cells| {
             let a = cells.query_advice(a, Rotation::cur());
             let is_odd = cells.query_selector(is_odd);
 
             DynamicTableMap {
                 selector: is_odd,
-                table_map: vec![(a.clone(), table_ref.table_column(table_vals).unwrap())],
+                table_map: vec![(a.clone(), table_vals.into())],
             }
         });
 

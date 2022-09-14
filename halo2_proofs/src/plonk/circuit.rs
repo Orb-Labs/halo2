@@ -335,6 +335,7 @@ impl TableColumn {
     }
 }
 
+/// Users of halo2 cannot use this struct.
 /// The index of a dynamic table in `ConstraintSystem.dynamic_tables`.
 /// The `index + 1` serves as this dynamic table's unique tag value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -356,24 +357,11 @@ impl DynamicTableIndex {
 }
 
 /// TODO
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct DynamicTableColumn<'table> {
-    pub(crate) index: DynamicTableIndex,
-    column: Column<Any>,
-    table: PhantomData<*mut &'table ()>,
-}
-
-impl DynamicTableColumn<'_> {
-    pub(crate) fn column(&self) -> Column<Any> {
-        self.column
-    }
-}
-
-/// TODO
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
     pub(crate) name: String,
     pub(crate) index: DynamicTableIndex,
+    /// Columns contained in this table, excluding the tag column.
     pub(crate) columns: Vec<Column<Any>>,
 }
 
@@ -398,29 +386,13 @@ impl DynamicTable {
     {
         region.include_in_lookup(annotation, self, offset)
     }
-
-    /// Acquire a `DynamicTableColumn` for use in a lookup.
-    /// Will return `None` if the Dynamic table does not contain the column.
-    pub fn table_column(&self, column: impl Into<Column<Any>>) -> Option<DynamicTableColumn<'_>> {
-        let column = column.into();
-        if self.columns.contains(&column) {
-            Some(DynamicTableColumn {
-                index: self.index,
-                column,
-                table: PhantomData,
-            })
-        } else {
-            // TODO replace with Result::Error
-            None
-        }
-    }
 }
 
 /// Gate a dynamic lookup with a selector expression.
 /// The table tag, and all lookup expressions will be multiplied by the selector expression.
 ///
 #[derive(Debug)]
-pub struct DynamicTableMap<'table, F> {
+pub struct DynamicTableMap<F> {
     /// The table tag, and all lookup expressions will be multiplied by the selector expression.
     /// ## Safety
     ///
@@ -428,7 +400,7 @@ pub struct DynamicTableMap<'table, F> {
     /// Otherwise you may lookup values in a diffrent lookup table.
     pub selector: Expression<F>,
     /// A map of lookup expressions to table columns
-    pub table_map: Vec<(Expression<F>, DynamicTableColumn<'table>)>,
+    pub table_map: Vec<(Expression<F>, Column<Any>)>,
 }
 
 /// This trait allows a [`Circuit`] to direct some backend to assign a witness
@@ -1220,22 +1192,39 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// `table_map` returns a map between input expressions and the table columns
     /// they need to match.
+    ///
+    /// `table` must contain all table columns used in table_map.
     pub fn lookup_dynamic(
         &mut self,
         table: &DynamicTable,
-        table_map: impl for<'table> FnOnce(
-            &mut VirtualCells<'_, F>,
-            &'table DynamicTable,
-        ) -> DynamicTableMap<'table, F>,
+        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> DynamicTableMap<F>,
     ) -> usize
     where
-        F: PrimeField,
+        F: FieldExt,
     {
         let mut cells = VirtualCells::new(self);
         let DynamicTableMap {
             selector,
             table_map,
-        } = table_map(&mut cells, table);
+        } = table_map(&mut cells);
+
+        let non_table_columns: Vec<_> = table_map
+            .iter()
+            .map(|(_, c)| c)
+            .filter(|col| {
+                !cells.meta.dynamic_tables[table.index.0]
+                    .columns
+                    .contains(col)
+            })
+            .collect();
+        if !non_table_columns.is_empty() {
+            panic!(
+                "{:?} does not contain {:?}. Try adding these columns to the dynamic table.",
+                table,
+                non_table_columns.as_slice()
+            );
+        }
+
         let mut table_map: Vec<_> = table_map
             .into_iter()
             .map(|(input, table)| {
@@ -1248,7 +1237,7 @@ impl<F: Field> ConstraintSystem<F> {
                     panic!("input expression containing simple selector supplied to lookup argument");
                 }
 
-                let table_query = cells.query_any(table.column(), Rotation::cur());
+                let table_query = cells.query_any(table, Rotation::cur());
                 (selector.clone() * input, selector.clone() * table_query)
             })
             .collect();
@@ -1659,7 +1648,8 @@ impl<F: Field> ConstraintSystem<F> {
         Selector(index, false)
     }
 
-    /// TODO
+    /// Construct a dynamic table consisting of fixed, and advice.
+    /// `name` is solely for debugging.
     pub fn create_dynamic_table(
         &mut self,
         name: impl Into<String>,

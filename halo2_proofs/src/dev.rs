@@ -1250,14 +1250,14 @@ mod tests {
                     let q = meta.complex_selector();
                     let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
-                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                    meta.lookup_dynamic(&table, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let q = cells.query_selector(q);
 
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
+                            table_map: vec![(a, table_vals.into())],
                         }
                     });
 
@@ -1318,14 +1318,14 @@ mod tests {
                     let q = meta.complex_selector();
                     let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
-                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                    meta.lookup_dynamic(&table, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let q = cells.query_selector(q);
 
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
+                            table_map: vec![(a, table_vals.into())],
                         }
                     });
 
@@ -1386,14 +1386,14 @@ mod tests {
                     let q = meta.complex_selector();
                     let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
-                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                    meta.lookup_dynamic(&table, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let q = cells.query_selector(q);
 
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
+                            table_map: vec![(a, table_vals.into())],
                         }
                     });
 
@@ -1464,14 +1464,14 @@ mod tests {
                     let q = meta.complex_selector();
                     let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
-                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                    meta.lookup_dynamic(&table, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let q = cells.query_selector(q);
 
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
+                            table_map: vec![(a, table_vals.into())],
                         }
                     });
 
@@ -1581,14 +1581,89 @@ mod tests {
                     let q = meta.complex_selector();
                     let table = meta.create_dynamic_table("table", &[], &[table_vals]);
 
-                    meta.lookup_dynamic(&table, |cells, table_ref| {
+                    meta.lookup_dynamic(&table, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let q = cells.query_selector(q);
 
                         // If q is enabled, a must be in the table.
                         DynamicTableMap {
                             selector: q,
-                            table_map: vec![(a, table_ref.table_column(table_vals).unwrap())],
+                            table_map: vec![(a, table_vals.into())],
+                        }
+                    });
+
+                    DynLookupCircuitConfig {
+                        a,
+                        table_vals,
+                        q,
+                        table,
+                    }
+                }
+
+                fn without_witnesses(&self) -> Self {
+                    Self {}
+                }
+
+                fn synthesize(
+                    &self,
+                    config: Self::Config,
+                    mut layouter: impl Layouter<Fp>,
+                ) -> Result<(), Error> {
+                    layouter.assign_region(
+                        || "table",
+                        |mut region| {
+                            config.table.include_row(|| "", &mut region, 0)?;
+                            Ok(())
+                        },
+                    )?;
+                    Ok(())
+                }
+            }
+
+            let res = MockProver::run(K, &DynLookupCircuit {}, vec![])
+                .unwrap()
+                .verify();
+
+            assert_eq!(
+                res,
+                Err(vec![VerifyFailure::DynamicTableCellNotAssigned {
+                    dynamic_table: DynamicTable {
+                        name: "table".to_string(),
+                        index: DynamicTableIndex::from_index(0),
+                        columns: vec![Column::new(1, Any::Advice)],
+                    },
+                    region: (0, "table".to_string(),).into(),
+                    column: Column::new(1, Any::Advice),
+                    offset: 0,
+                }])
+            )
+        }
+
+        #[test]
+        #[should_panic]
+        fn column_not_in_dynamic_table() {
+            struct DynLookupCircuit {}
+            impl Circuit<Fp> for DynLookupCircuit {
+                type Config = DynLookupCircuitConfig;
+                type FloorPlanner = SimpleFloorPlanner;
+
+                fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                    let a = meta.advice_column();
+                    let not_table_vals = meta.advice_column();
+                    let table_vals = meta.advice_column();
+                    let q = meta.complex_selector();
+                    let table = meta.create_dynamic_table("table", &[], &[table_vals]);
+
+                    meta.lookup_dynamic(&table, |cells| {
+                        let a = cells.query_advice(a, Rotation::cur());
+                        let q = cells.query_selector(q);
+
+                        // If q is enabled, a must be in the table.
+                        DynamicTableMap {
+                            selector: q,
+                            // Note that we are looking up a in not_table_vals.
+                            // not_table_vals is not a column in the dynamic table.
+                            table_map: vec![(a, not_table_vals.into())],
                         }
                     });
 
@@ -1674,29 +1749,23 @@ mod tests {
                     let even = meta.create_dynamic_table("even", &[], &[table_vals]);
                     let odd = meta.create_dynamic_table("odd", &[], &[table_vals]);
 
-                    meta.lookup_dynamic(&even, |cells, table_ref| {
+                    meta.lookup_dynamic(&even, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let is_even = cells.query_selector(is_even);
 
                         DynamicTableMap {
                             selector: is_even,
-                            table_map: vec![(
-                                a.clone(),
-                                table_ref.table_column(table_vals).unwrap(),
-                            )],
+                            table_map: vec![(a.clone(), table_vals.into())],
                         }
                     });
 
-                    meta.lookup_dynamic(&odd, |cells, table_ref| {
+                    meta.lookup_dynamic(&odd, |cells| {
                         let a = cells.query_advice(a, Rotation::cur());
                         let is_odd = cells.query_selector(is_odd);
 
                         DynamicTableMap {
                             selector: is_odd,
-                            table_map: vec![(
-                                a.clone(),
-                                table_ref.table_column(table_vals).unwrap(),
-                            )],
+                            table_map: vec![(a.clone(), table_vals.into())],
                         }
                     });
 
