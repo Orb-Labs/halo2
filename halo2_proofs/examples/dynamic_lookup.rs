@@ -106,7 +106,7 @@ impl Circuit<Fp> for DynLookupCircuit {
                     } else {
                         &config.odd
                     };
-                    table.include_row(|| "", &mut region, i)?;
+                    table.add_row(|| "", &mut region, i)?;
                 }
                 Ok(())
             },

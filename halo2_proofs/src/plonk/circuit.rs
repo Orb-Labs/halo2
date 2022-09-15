@@ -373,7 +373,7 @@ impl fmt::Display for DynamicTable {
 
 impl DynamicTable {
     /// Includes a row at `offset` in this dynamic lookup table.
-    pub fn include_row<F, A, AR>(
+    pub fn add_row<F, A, AR>(
         &self,
         annotation: A,
         region: &mut Region<F>,
@@ -384,7 +384,7 @@ impl DynamicTable {
         A: Fn() -> AR,
         AR: Into<String>,
     {
-        region.include_in_lookup(annotation, self, offset)
+        region.add_row_to_table(annotation, self, offset)
     }
 }
 

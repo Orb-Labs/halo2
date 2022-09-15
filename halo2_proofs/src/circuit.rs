@@ -207,7 +207,7 @@ impl<'r, F: Field> Region<'r, F> {
     }
 
     /// Includes a row at `offset` in this dynamic lookup table.
-    pub(crate) fn include_in_lookup<A, AR>(
+    pub(crate) fn add_row_to_table<A, AR>(
         &mut self,
         annotation: A,
         table: &DynamicTable,

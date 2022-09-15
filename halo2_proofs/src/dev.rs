@@ -1290,7 +1290,7 @@ mod tests {
                                     i,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                region.include_in_lookup(|| "", &config.table, i)?;
+                                region.add_row_to_table(|| "", &config.table, i)?;
                             }
                             Ok(())
                         },
@@ -1358,7 +1358,7 @@ mod tests {
                                     0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                region.include_in_lookup(|| "", &config.table, 0)?;
+                                region.add_row_to_table(|| "", &config.table, 0)?;
                                 Ok(())
                             },
                         )?;
@@ -1426,7 +1426,7 @@ mod tests {
                                     0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                config.table.include_row(|| "", &mut region, 0)
+                                config.table.add_row(|| "", &mut region, 0)
                             },
                         )?;
                     }
@@ -1612,7 +1612,7 @@ mod tests {
                     layouter.assign_region(
                         || "table",
                         |mut region| {
-                            config.table.include_row(|| "", &mut region, 0)?;
+                            config.table.add_row(|| "", &mut region, 0)?;
                             Ok(())
                         },
                     )?;
@@ -1687,7 +1687,7 @@ mod tests {
                     layouter.assign_region(
                         || "table",
                         |mut region| {
-                            config.table.include_row(|| "", &mut region, 0)?;
+                            config.table.add_row(|| "", &mut region, 0)?;
                             Ok(())
                         },
                     )?;
@@ -1824,7 +1824,7 @@ mod tests {
                                 } else {
                                     &config.odd
                                 };
-                                table.include_row(|| "", &mut region, i)?;
+                                table.add_row(|| "", &mut region, i)?;
                             }
                             Ok(())
                         },
