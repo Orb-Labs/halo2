@@ -85,12 +85,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Ok(())
     }
 
-    fn add_row_to_table(
-        &mut self,
-        table: &DynamicTable,
-        row: usize,
-    ) -> Result<(), Error>
-    {
+    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
         if !self.usable_rows.contains(&row) {
             return Err(Error::not_enough_rows_available(self.k));
         }

@@ -440,16 +440,7 @@ impl<F: Field> Assignment<F> for Layout {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(
-        &mut self,
-        _: A,
-        table: &DynamicTable,
-        row: usize,
-    ) -> Result<(), Error>
-    where
-        A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
+    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
         self.dynamic_tables[table.index.index()][row] = true;
 
         for column in table.columns.iter() {

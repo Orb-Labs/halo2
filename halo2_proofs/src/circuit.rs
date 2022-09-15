@@ -211,10 +211,8 @@ impl<'r, F: Field> Region<'r, F> {
         &mut self,
         table: &DynamicTable,
         offset: usize,
-    ) -> Result<(), Error>
-    {
-        self.region
-            .include_in_lookup(table, offset)
+    ) -> Result<(), Error> {
+        self.region.add_to_lookup(table, offset)
     }
 
     /// Assign an advice column value (witness).

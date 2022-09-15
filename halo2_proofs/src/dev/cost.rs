@@ -71,12 +71,7 @@ impl<F: Field> Assignment<F> for Assembly {
         Ok(())
     }
 
-    fn add_row_to_table(
-        &mut self,
-        table: &DynamicTable,
-        row: usize,
-    ) -> Result<(), Error>
-    {
+    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
         self.dynamic_tables[table.index.index()][row] = true;
 
         Ok(())
