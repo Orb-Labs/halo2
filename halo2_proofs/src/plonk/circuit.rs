@@ -373,18 +373,11 @@ impl fmt::Display for DynamicTable {
 
 impl DynamicTable {
     /// Includes a row at `offset` in this dynamic lookup table.
-    pub fn add_row<F, A, AR>(
-        &self,
-        annotation: A,
-        region: &mut Region<F>,
-        offset: usize,
-    ) -> Result<(), Error>
+    pub fn add_row<F>(&self, region: &mut Region<F>, offset: usize) -> Result<(), Error>
     where
         F: Field,
-        A: Fn() -> AR,
-        AR: Into<String>,
     {
-        region.add_row_to_table(annotation, self, offset)
+        region.add_row_to_table(self, offset)
     }
 }
 
@@ -438,16 +431,8 @@ pub trait Assignment<F: Field> {
         A: FnOnce() -> AR,
         AR: Into<String>;
 
-    /// Includes a row in the provided dynamic lookup table.
-    fn include_in_lookup<A, AR>(
-        &mut self,
-        annotation: A,
-        table: &DynamicTable,
-        row: usize,
-    ) -> Result<(), Error>
-    where
-        A: FnOnce() -> AR,
-        AR: Into<String>;
+    /// Adds a row in the provided dynamic lookup table.
+    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error>;
 
     /// Queries the cell of an instance column at a particular absolute row.
     ///

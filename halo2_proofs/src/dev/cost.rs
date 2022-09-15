@@ -71,15 +71,11 @@ impl<F: Field> Assignment<F> for Assembly {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(
+    fn add_row_to_table(
         &mut self,
-        _: A,
         table: &DynamicTable,
         row: usize,
     ) -> Result<(), Error>
-    where
-        A: FnOnce() -> AR,
-        AR: Into<String>,
     {
         self.dynamic_tables[table.index.index()][row] = true;
 

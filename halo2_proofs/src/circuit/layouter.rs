@@ -54,7 +54,6 @@ pub trait RegionLayouter<F: Field>: fmt::Debug {
     /// Enables a selector at the given offset.
     fn include_in_lookup<'v>(
         &'v mut self,
-        annotation: &'v (dyn Fn() -> String + 'v),
         table: &DynamicTable,
         offset: usize,
     ) -> Result<(), Error>;
@@ -233,7 +232,6 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
 
     fn include_in_lookup<'v>(
         &'v mut self,
-        _: &'v (dyn Fn() -> String + 'v),
         table: &DynamicTable,
         offset: usize,
     ) -> Result<(), Error> {

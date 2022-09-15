@@ -85,15 +85,11 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(
+    fn add_row_to_table(
         &mut self,
-        _: A,
         table: &DynamicTable,
         row: usize,
     ) -> Result<(), Error>
-    where
-        A: FnOnce() -> AR,
-        AR: Into<String>,
     {
         if !self.usable_rows.contains(&row) {
             return Err(Error::not_enough_rows_available(self.k));

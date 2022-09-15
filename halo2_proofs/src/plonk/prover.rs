@@ -168,15 +168,11 @@ pub fn create_proof<
                     Ok(())
                 }
 
-                fn include_in_lookup<A, AR>(
+                fn add_row_to_table(
                     &mut self,
-                    _: A,
                     _: &DynamicTable,
                     _: usize,
                 ) -> Result<(), Error>
-                where
-                    A: FnOnce() -> AR,
-                    AR: Into<String>,
                 {
                     // We only care about advice columns here
 

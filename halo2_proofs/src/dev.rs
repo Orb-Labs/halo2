@@ -343,16 +343,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         Ok(())
     }
 
-    fn include_in_lookup<A, AR>(
-        &mut self,
-        _: A,
-        table: &DynamicTable,
-        row: usize,
-    ) -> Result<(), Error>
-    where
-        A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
+    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
         self.dynamic_tables[table.index.index()][row] = true;
 
         if let Some(region) = self.current_region.as_mut() {
@@ -1290,7 +1281,7 @@ mod tests {
                                     i,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                region.add_row_to_table(|| "", &config.table, i)?;
+                                region.add_row_to_table(&config.table, i)?;
                             }
                             Ok(())
                         },
@@ -1358,7 +1349,7 @@ mod tests {
                                     0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                region.add_row_to_table(|| "", &config.table, 0)?;
+                                region.add_row_to_table(&config.table, 0)?;
                                 Ok(())
                             },
                         )?;
@@ -1426,7 +1417,7 @@ mod tests {
                                     0,
                                     || Value::known(Fp::from(i as u64)),
                                 )?;
-                                config.table.add_row(|| "", &mut region, 0)
+                                config.table.add_row(&mut region, 0)
                             },
                         )?;
                     }
@@ -1612,7 +1603,7 @@ mod tests {
                     layouter.assign_region(
                         || "table",
                         |mut region| {
-                            config.table.add_row(|| "", &mut region, 0)?;
+                            config.table.add_row(&mut region, 0)?;
                             Ok(())
                         },
                     )?;
@@ -1687,7 +1678,7 @@ mod tests {
                     layouter.assign_region(
                         || "table",
                         |mut region| {
-                            config.table.add_row(|| "", &mut region, 0)?;
+                            config.table.add_row(&mut region, 0)?;
                             Ok(())
                         },
                     )?;
@@ -1824,7 +1815,7 @@ mod tests {
                                 } else {
                                     &config.odd
                                 };
-                                table.add_row(|| "", &mut region, i)?;
+                                table.add_row(&mut region, i)?;
                             }
                             Ok(())
                         },

@@ -207,18 +207,14 @@ impl<'r, F: Field> Region<'r, F> {
     }
 
     /// Includes a row at `offset` in this dynamic lookup table.
-    pub(crate) fn add_row_to_table<A, AR>(
+    pub(crate) fn add_row_to_table(
         &mut self,
-        annotation: A,
         table: &DynamicTable,
         offset: usize,
     ) -> Result<(), Error>
-    where
-        A: Fn() -> AR,
-        AR: Into<String>,
     {
         self.region
-            .include_in_lookup(&|| annotation().into(), table, offset)
+            .include_in_lookup(table, offset)
     }
 
     /// Assign an advice column value (witness).
