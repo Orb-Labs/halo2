@@ -16,21 +16,9 @@
       systems = [ "x86_64-linux" ];
       config.projectRoot = ./.;
       source = ./.;
-      packageOverrides.tiny-ram-halo2 = {
-        set-toolchain.overrideRustToolchain = old: { inherit (toolchain) cargo rustc; };
-        freetype-sys.nativeBuildInputs = old: old ++ [ pkgs.cmake ];
-        expat-sys.nativeBuildInputs = old: old ++ [ pkgs.cmake ];
-        servo-fontconfig-sys = {
-          nativeBuildInputs = old: old ++ [ pkgs.pkg-config ];
-          buildInputs = old: old ++ [ pkgs.fontconfig ];
-        };
-      };
+      packageOverrides."^.*".set-toolchain.overrideRustToolchain = old: { inherit (toolchain) cargo rustc; };
     })
     // {
-      checks.x86_64-linux.halo2 = self.packages.x86_64-linux.halo2;
-      checks.x86_64-linux.halo2-proofs = self.packages.x86_64-linux.halo2-proofs;
-      checks.x86_64-linux.halo2-gadgets = self.packages.x86_64-linux.halo2-gadgets;
-
       devShells.x86_64-linux.default =
         let
           rust-toolchain = (pkgs.formats.toml { }).generate "rust-toolchain.toml" {
