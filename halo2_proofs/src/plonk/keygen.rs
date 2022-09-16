@@ -10,8 +10,8 @@ use super::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
-    permutation, Assigned, DynamicTable, Error, LagrangeCoeff, Polynomial, ProvingKey,
-    VerifyingKey,
+    permutation, Assigned, DynamicTableInfo, Error, LagrangeCoeff, Polynomial, ProvingKey,
+    VerifyingKey, DynamicTable,
 };
 use crate::{
     arithmetic::CurveAffine,
@@ -85,12 +85,12 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Ok(())
     }
 
-    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
+    fn add_row_to_table(&mut self, table: DynamicTable, row: usize) -> Result<(), Error> {
         if !self.usable_rows.contains(&row) {
             return Err(Error::not_enough_rows_available(self.k));
         }
 
-        self.dynamic_tables[table.index.index()][row] = true;
+        self.dynamic_tables[table.index()][row] = true;
 
         Ok(())
     }

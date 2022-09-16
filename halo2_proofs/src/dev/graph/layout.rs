@@ -440,8 +440,8 @@ impl<F: Field> Assignment<F> for Layout {
         Ok(())
     }
 
-    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
-        self.dynamic_tables[table.index.index()][row] = true;
+    fn add_row_to_table(&mut self, table: DynamicTable, row: usize) -> Result<(), Error> {
+        self.dynamic_tables[table.index()][row] = true;
 
         for column in table.columns.iter() {
             self.update((*column).into(), row);

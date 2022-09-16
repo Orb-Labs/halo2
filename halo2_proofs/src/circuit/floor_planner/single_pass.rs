@@ -12,7 +12,7 @@ use crate::{
     },
     plonk::{
         Advice, Any, Assigned, Assignment, Circuit, Column, Error, Fixed, FloorPlanner, Instance,
-        Selector, TableColumn,
+        Selector, TableColumn, DynamicTable,
     },
 };
 
@@ -277,7 +277,7 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> RegionLayouter<F>
 
     fn add_to_lookup(
         &mut self,
-        table: &crate::plonk::DynamicTable,
+        table: DynamicTable,
         offset: usize,
     ) -> Result<(), Error> {
         self.layouter

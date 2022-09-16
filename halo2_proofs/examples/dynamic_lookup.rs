@@ -4,7 +4,8 @@ use halo2_proofs::{
     pasta::Fp,
     plonk::{
         create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
-        ConstraintSystem, DynamicTable, DynamicTableMap, Error, Selector, SingleVerifier,
+        ConstraintSystem, DynamicTable, DynamicTableMap, Error, Selector,
+        SingleVerifier,
     },
     poly::{commitment::Params, Rotation},
     transcript::{Blake2bRead, Blake2bWrite},

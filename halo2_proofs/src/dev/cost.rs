@@ -13,8 +13,8 @@ use group::prime::PrimeGroup;
 use crate::{
     circuit::Value,
     plonk::{
-        Advice, Any, Assigned, Assignment, Circuit, Column, ConstraintSystem, DynamicTable, Error,
-        Fixed, FloorPlanner, Instance, Selector,
+        Advice, Any, Assigned, Assignment, Circuit, Column, ConstraintSystem, DynamicTableInfo, Error,
+        Fixed, FloorPlanner, Instance, Selector, DynamicTable,
     },
     poly::Rotation,
 };
@@ -71,8 +71,8 @@ impl<F: Field> Assignment<F> for Assembly {
         Ok(())
     }
 
-    fn add_row_to_table(&mut self, table: &DynamicTable, row: usize) -> Result<(), Error> {
-        self.dynamic_tables[table.index.index()][row] = true;
+    fn add_row_to_table(&mut self, table: DynamicTable, row: usize) -> Result<(), Error> {
+        self.dynamic_tables[table.index()][row] = true;
 
         Ok(())
     }
