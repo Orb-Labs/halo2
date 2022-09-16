@@ -356,7 +356,9 @@ impl DynamicTableIndex {
     }
 }
 
-/// TODO
+/// `DynamicTable` is used to track the columns and rows comprise a dynamic lookup table.
+/// `DynamicTable` are constructed in the configuration phase by `create_dynamic_table`.
+/// To include a row of a region in a dynamic table use `add_row_to_table` during synthesize.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DynamicTable {
     pub(crate) name: String,
