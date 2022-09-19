@@ -239,7 +239,7 @@ where
             .map(|poly| domain.lagrange_from_vec(poly)),
     );
 
-    let (cs, dynamic_table_polys) = cs.compress_dynamic_table_tags(assembly.dynamic_tables);
+    let (cs, dynamic_table_polys) = cs.compress_dynamic_table_tags(&assembly.dynamic_tables);
     fixed.extend(
         dynamic_table_polys
             .into_iter()
@@ -308,7 +308,7 @@ where
             .map(|poly| vk.domain.lagrange_from_vec(poly)),
     );
 
-    let (cs, dynamic_table_polys) = cs.compress_dynamic_table_tags(assembly.dynamic_tables);
+    let (cs, dynamic_table_polys) = cs.compress_dynamic_table_tags(&assembly.dynamic_tables);
     fixed.extend(
         dynamic_table_polys
             .into_iter()

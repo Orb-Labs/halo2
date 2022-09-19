@@ -565,7 +565,7 @@ impl<F: FieldExt> MockProver<F> {
 
         let (cs, tag_polys) = prover
             .cs
-            .compress_dynamic_table_tags(prover.dynamic_tables.clone());
+            .compress_dynamic_table_tags(&prover.dynamic_tables);
         prover.cs = cs;
         prover.fixed.extend(tag_polys.into_iter().map(|poly| {
             let mut v = vec![CellValue::Unassigned; n];

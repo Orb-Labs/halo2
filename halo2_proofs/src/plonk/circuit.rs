@@ -1382,7 +1382,7 @@ impl<F: Field> ConstraintSystem<F> {
 
     pub(crate) fn compress_dynamic_table_tags(
         mut self,
-        dynamic_tables: Vec<Vec<bool>>,
+        dynamic_tables: &Vec<Vec<bool>>,
     ) -> (Self, Vec<Vec<F>>)
     where
         F: PrimeField,
