@@ -492,6 +492,20 @@ pub enum Expression<F> {
     Constant(F),
     /// This is a virtual selector
     Selector(Selector),
+    /// This is an Expression which will be treated as a `Selector` by the mock prover.
+    /// Wraping an Expression has no effect on evalutation, it only attaches meta data denoting the
+    /// portions of a constraint expression that acts as a selector.
+    ///
+    /// If the selector expression evaluates to zero the mock prover will not require cells queried by
+    /// the surrounding constraint expression be assigned.
+    ///
+    /// E.g. `selector * advice_bool * query_unassigned_cell` will produce
+    /// [`VerifyFailure::CellNotAssigned`](crate::dev::VerifyFailure::CellNotAssigned),
+    /// while `SelectorExpression(selector * advice_bool) * query_unassigned_cell` will not.
+    ///
+    /// [`Constraints::with_selector(selector_expression, constraints)`][Constraints::with_selector]
+    /// produces annotated expressions of the form `SelectorExpression(selector_expression) * c`.
+    SelectorExpression(Box<Expression<F>>),
     /// This is a fixed column queried at a certain relative location
     Fixed(FixedQuery),
     /// This is an advice (witness) column queried at a certain relative location
@@ -509,8 +523,7 @@ pub enum Expression<F> {
 }
 
 impl<F: Field> Expression<F> {
-    /// Evaluate the polynomial using the provided closures to perform the
-    /// operations.
+    /// Evaluate the polynomial using the provided closures to perform the operations.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate<T>(
         &self,
@@ -524,9 +537,53 @@ impl<F: Field> Expression<F> {
         product: &impl Fn(T, T) -> T,
         scaled: &impl Fn(T, F) -> T,
     ) -> T {
+        self.evaluate_ext(
+            constant,
+            selector_column,
+            fixed_column,
+            advice_column,
+            instance_column,
+            negated,
+            sum,
+            product,
+            scaled,
+            &|selector_expression| {
+                selector_expression.evaluate(
+                    constant,
+                    selector_column,
+                    fixed_column,
+                    advice_column,
+                    instance_column,
+                    negated,
+                    sum,
+                    product,
+                    scaled,
+                )
+            },
+        )
+    }
+
+    /// Evaluate the polynomial using the provided closures to perform the operations.
+    /// This method extends (evaluate)Self::evaluate), by visting meta data nodes
+    /// (currently that's only `selector_expression`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_ext<T>(
+        &self,
+        constant: &impl Fn(F) -> T,
+        selector_column: &impl Fn(Selector) -> T,
+        fixed_column: &impl Fn(FixedQuery) -> T,
+        advice_column: &impl Fn(AdviceQuery) -> T,
+        instance_column: &impl Fn(InstanceQuery) -> T,
+        negated: &impl Fn(T) -> T,
+        sum: &impl Fn(T, T) -> T,
+        product: &impl Fn(T, T) -> T,
+        scaled: &impl Fn(T, F) -> T,
+        selector_expression: &impl Fn(&Expression<F>) -> T,
+    ) -> T {
         match self {
             Expression::Constant(scalar) => constant(*scalar),
             Expression::Selector(selector) => selector_column(*selector),
+            Expression::SelectorExpression(exp) => selector_expression(exp),
             Expression::Fixed(query) => fixed_column(*query),
             Expression::Advice(query) => advice_column(*query),
             Expression::Instance(query) => instance_column(*query),
@@ -623,6 +680,7 @@ impl<F: Field> Expression<F> {
             Expression::Sum(a, b) => max(a.degree(), b.degree()),
             Expression::Product(a, b) => a.degree() + b.degree(),
             Expression::Scaled(poly, _) => poly.degree(),
+            Expression::SelectorExpression(exp) => exp.degree(),
         }
     }
 
@@ -672,6 +730,54 @@ impl<F: Field> Expression<F> {
             &|a, _| a,
         )
     }
+
+    /// Extracts VirtualCells from this expression.
+    pub(crate) fn queried_cells(&self) -> Vec<VirtualCell> {
+        self.evaluate(
+            &|_| vec![],
+            &|_| vec![],
+            &|query: FixedQuery| {
+                vec![(
+                    Column {
+                        index: query.column_index,
+                        column_type: Fixed,
+                    },
+                    query.rotation,
+                )
+                    .into()]
+            },
+            &|query: AdviceQuery| {
+                vec![(
+                    Column {
+                        index: query.column_index,
+                        column_type: Advice,
+                    },
+                    query.rotation,
+                )
+                    .into()]
+            },
+            &|query: InstanceQuery| {
+                vec![(
+                    Column {
+                        index: query.column_index,
+                        column_type: Instance,
+                    },
+                    query.rotation,
+                )
+                    .into()]
+            },
+            &|a| a,
+            &|mut a, mut b| {
+                a.append(&mut b);
+                a
+            },
+            &|mut a, mut b| {
+                a.append(&mut b);
+                a
+            },
+            &|a, _| a,
+        )
+    }
 }
 
 impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
@@ -679,6 +785,9 @@ impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
         match self {
             Expression::Constant(scalar) => f.debug_tuple("Constant").field(scalar).finish(),
             Expression::Selector(selector) => f.debug_tuple("Selector").field(selector).finish(),
+            Expression::SelectorExpression(exp) => {
+                f.debug_tuple("SelectorExpression").field(exp).finish()
+            }
             // Skip enum variant and print query struct directly to maintain backwards compatibility.
             Expression::Fixed(FixedQuery {
                 index,
@@ -771,7 +880,7 @@ pub(crate) struct PointIndex(pub usize);
 
 /// A "virtual cell" is a PLONK cell that has been queried at a particular relative offset
 /// within a custom gate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct VirtualCell {
     pub(crate) column: Column<Any>,
     pub(crate) rotation: Rotation,
