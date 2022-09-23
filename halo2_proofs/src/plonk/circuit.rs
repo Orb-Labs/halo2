@@ -536,19 +536,13 @@ impl<F: Field> Expression<F> {
         sum: &impl Fn(T, T) -> T,
         product: &impl Fn(T, T) -> T,
         scaled: &impl Fn(T, F) -> T,
+        selector_expression: &impl Fn(T) -> T,
     ) -> T {
-        self.evaluate_ext(
-            constant,
-            selector_column,
-            fixed_column,
-            advice_column,
-            instance_column,
-            negated,
-            sum,
-            product,
-            scaled,
-            &|selector_expression| {
-                selector_expression.evaluate(
+        match self {
+            Expression::Constant(scalar) => constant(*scalar),
+            Expression::Selector(selector) => selector_column(*selector),
+            Expression::SelectorExpression(exp) => {
+                selector_expression(exp.evaluate(
                     constant,
                     selector_column,
                     fixed_column,
@@ -558,32 +552,9 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
-                )
-            },
-        )
-    }
-
-    /// Evaluate the polynomial using the provided closures to perform the operations.
-    /// This method extends (evaluate)Self::evaluate), by visting meta data nodes
-    /// (currently that's only `selector_expression`).
-    #[allow(clippy::too_many_arguments)]
-    pub fn evaluate_ext<T>(
-        &self,
-        constant: &impl Fn(F) -> T,
-        selector_column: &impl Fn(Selector) -> T,
-        fixed_column: &impl Fn(FixedQuery) -> T,
-        advice_column: &impl Fn(AdviceQuery) -> T,
-        instance_column: &impl Fn(InstanceQuery) -> T,
-        negated: &impl Fn(T) -> T,
-        sum: &impl Fn(T, T) -> T,
-        product: &impl Fn(T, T) -> T,
-        scaled: &impl Fn(T, F) -> T,
-        selector_expression: &impl Fn(&Expression<F>) -> T,
-    ) -> T {
-        match self {
-            Expression::Constant(scalar) => constant(*scalar),
-            Expression::Selector(selector) => selector_column(*selector),
-            Expression::SelectorExpression(exp) => selector_expression(exp),
+                    selector_expression,
+                ))
+            }
             Expression::Fixed(query) => fixed_column(*query),
             Expression::Advice(query) => advice_column(*query),
             Expression::Instance(query) => instance_column(*query),
@@ -598,6 +569,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 negated(a)
             }
@@ -612,6 +584,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 let b = b.evaluate(
                     constant,
@@ -623,6 +596,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 sum(a, b)
             }
@@ -637,6 +611,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 let b = b.evaluate(
                     constant,
@@ -648,6 +623,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 product(a, b)
             }
@@ -662,6 +638,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 scaled(a, *f)
             }
@@ -701,6 +678,7 @@ impl<F: Field> Expression<F> {
             &|a, b| a || b,
             &|a, b| a || b,
             &|a, _| a,
+            &|a| a,
         )
     }
 
@@ -728,6 +706,7 @@ impl<F: Field> Expression<F> {
             &op,
             &op,
             &|a, _| a,
+            &|a| a,
         )
     }
 
@@ -776,6 +755,7 @@ impl<F: Field> Expression<F> {
                 a
             },
             &|a, _| a,
+            &|a| a,
         )
     }
 }
@@ -981,7 +961,7 @@ fn apply_selector_to_constraint<F: Field, C: Into<Constraint<F>>>(
     let constraint: Constraint<F> = c.into();
     Constraint {
         name: constraint.name,
-        poly: selector * constraint.poly,
+        poly: dbg!(selector * constraint.poly),
     }
 }
 
@@ -1428,6 +1408,7 @@ impl<F: Field> ConstraintSystem<F> {
                 &|a, b| a + b,
                 &|a, b| a * b,
                 &|a, f| a * f,
+                &|a| Expression::SelectorExpression(Box::new(a)),
             );
         }
 

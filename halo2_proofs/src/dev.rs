@@ -557,31 +557,43 @@ impl<F: FieldExt> MockProver<F> {
             &|a, b| a + b,
             &|a, b| a * b,
             &|a, scalar| a * scalar,
+            &|a| a,
         )
     }
 
     // Check if a constraint poly is enabled, taking selector expressions into account.
     // If a gate
     fn constraint_enabled(&self, poly: &Expression<F>, row: i32) -> bool {
-        let is_disabled = poly.evaluate_ext(
+        dbg!(poly);
+        let (is_disabled, exp) = poly.evaluate(
             // The constant zero is analogous to a disabled selector expression.
-            &|f| f == F::zero(),
+            &|f| (f == F::zero(), Expression::Constant(f)),
             &|_| panic!("virtual selectors are removed during optimization"),
             // An individual query is an enabled expression.
-            &|_| false,
-            &|_| false,
-            &|_| false,
+            &|query| (false, Expression::Fixed(query)),
+            &|query| (false, Expression::Advice(query)),
+            &|query| (false, Expression::Instance(query)),
             // Negation of a disabled expression (-0) does not enable the expression.
             &|is_disabled| is_disabled,
             // The sum of two disabled expressions is a disabled expression.
-            &|a_disabled, b_disabled| a_disabled && b_disabled,
+            &|(a_disabled, a_exp), (b_disabled, b_exp)| {
+                (
+                    a_disabled && b_disabled,
+                    Expression::Sum(Box::new(a_exp), Box::new(b_exp)),
+                )
+            },
             // The product of a disabled selector expression, and anything is a disabled expression.
-            &|a_disabled, b_disabled| a_disabled || b_disabled,
+            &|(a_disabled, a_exp), (b_disabled, b_exp)| {
+                (
+                    a_disabled || b_disabled,
+                    Expression::Product(Box::new(a_exp), Box::new(b_exp)),
+                )
+            },
             &|is_disabled, _| is_disabled,
             // If a selector expression evaluates to zero it is disabled.
-            &|exp| {
-                let real = self.evaluate_real(exp, row);
-                real == Value::Real(F::zero())
+            &|(_, exp)| {
+                let real = self.evaluate_real(&exp, row);
+                (real == Value::Real(F::zero()), exp)
             },
         );
 
@@ -740,6 +752,7 @@ impl<F: FieldExt> MockProver<F> {
                             &|a, b| a + b,
                             &|a, b| a * b,
                             &|a, scalar| a * scalar,
+                            &|a| a,
                         )
                     };
 
@@ -921,8 +934,8 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            Advice, Any, Circuit, Column, ConstraintSystem, Error, Expression, Selector,
-            TableColumn,
+            Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Expression,
+            Selector, TableColumn,
         },
         poly::Rotation,
     };
@@ -997,6 +1010,123 @@ mod tests {
 
                         // BUG: Forget to assign a and b.
                         config.q1.enable(&mut region, 3)?;
+
+                        Ok(())
+                    },
+                )
+            }
+        }
+
+        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        assert_eq!(
+            prover.verify(),
+            Err(vec![
+                // b is unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 2,
+                    column: Column::new(1, Any::Advice),
+                    offset: 2,
+                },
+                // Equality at gate offset 3
+                // a and b are unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(0, Any::Advice),
+                    offset: 2,
+                },
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(1, Any::Advice),
+                    offset: 3,
+                },
+                // Negated Equality at gate offset 3
+                // b is unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (1, "Negated Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 2,
+                    column: Column::new(1, Any::Advice),
+                    offset: 2,
+                },
+                // a and b are unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (1, "Negated Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(0, Any::Advice),
+                    offset: 2,
+                },
+                VerifyFailure::CellNotAssigned {
+                    gate: (1, "Negated Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(1, Any::Advice),
+                    offset: 3,
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn unassigned_cell_two_selectors() {
+        const K: u32 = 4;
+
+        #[derive(Clone)]
+        struct FaultyCircuitConfig {
+            q1: Selector,
+            q2: Selector,
+            a: Column<Advice>,
+        }
+
+        struct FaultyCircuit {}
+
+        impl Circuit<Fp> for FaultyCircuit {
+            type Config = FaultyCircuitConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+
+            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                let a = meta.advice_column();
+                let q1 = meta.complex_selector();
+                let q2 = meta.complex_selector();
+
+                meta.create_gate("Disabled check", |cells| {
+                    let q1 = cells.query_selector(q1);
+                    let q2 = cells.query_selector(q2);
+                    let a = cells.query_advice(a, Rotation::cur());
+
+                    Constraints::with_selector(
+                        Expression::SelectorExpression(Box::new(q1)),
+                        [a * q2],
+                    )
+                });
+
+                FaultyCircuitConfig { q1, q2, a }
+            }
+
+            fn without_witnesses(&self) -> Self {
+                Self {}
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fp>,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "Faulty synthesis",
+                    |mut region| {
+                        // BUG: Forget to assign a
+                        config.q1.enable(&mut region, 0)?;
+                        config.q2.enable(&mut region, 0)?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::zero()))?;
+
+                        config.q1.enable(&mut region, 1)?;
 
                         Ok(())
                     },
