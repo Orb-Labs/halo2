@@ -160,5 +160,7 @@ pub(super) fn expression_to_string<F: Field>(
                 format!("{} * {}", a, util::format_value(s))
             }
         },
+        // SelectorsExpression metadata is not printed
+        &|a| a,
     )
 }

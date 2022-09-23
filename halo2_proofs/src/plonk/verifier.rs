@@ -238,6 +238,7 @@ pub fn verify_proof<
                                 &|a, b| a + &b,
                                 &|a, b| a * &b,
                                 &|a, scalar| a * &scalar,
+                                &|a| a
                             )
                         })
                     }))
