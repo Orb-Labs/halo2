@@ -129,7 +129,7 @@ impl<F: FieldExt> Argument<F> {
                         &|a, b| a + b,
                         &|a, b| a * b,
                         &|a, scalar| a * scalar,
-                        &|a| a
+                        &|a| a,
                     )
                 })
                 .collect();
@@ -159,7 +159,7 @@ impl<F: FieldExt> Argument<F> {
                         &|a, b| a + b,
                         &|a, b| a * b,
                         &|a, scalar| a * scalar,
-                        &|a| a
+                        &|a| a,
                     )
                 })
                 .collect();

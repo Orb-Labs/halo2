@@ -541,20 +541,18 @@ impl<F: Field> Expression<F> {
         match self {
             Expression::Constant(scalar) => constant(*scalar),
             Expression::Selector(selector) => selector_column(*selector),
-            Expression::SelectorExpression(exp) => {
-                selector_expression(exp.evaluate(
-                    constant,
-                    selector_column,
-                    fixed_column,
-                    advice_column,
-                    instance_column,
-                    negated,
-                    sum,
-                    product,
-                    scaled,
-                    selector_expression,
-                ))
-            }
+            Expression::SelectorExpression(exp) => selector_expression(exp.evaluate(
+                constant,
+                selector_column,
+                fixed_column,
+                advice_column,
+                instance_column,
+                negated,
+                sum,
+                product,
+                scaled,
+                selector_expression,
+            )),
             Expression::Fixed(query) => fixed_column(*query),
             Expression::Advice(query) => advice_column(*query),
             Expression::Instance(query) => instance_column(*query),

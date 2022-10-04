@@ -565,7 +565,7 @@ impl<F: FieldExt> MockProver<F> {
     // If a gate
     fn constraint_enabled(&self, poly: &Expression<F>, row: i32) -> bool {
         dbg!(poly);
-        let (is_disabled, exp) = poly.evaluate(
+        let (is_disabled, _) = poly.evaluate(
             // The constant zero is analogous to a disabled selector expression.
             &|f| (f == F::zero(), Expression::Constant(f)),
             &|_| panic!("virtual selectors are removed during optimization"),
