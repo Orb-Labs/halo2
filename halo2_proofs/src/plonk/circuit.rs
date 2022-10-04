@@ -1358,11 +1358,11 @@ impl<F: Field> ConstraintSystem<F> {
             || {
                 let column = self.fixed_column();
                 new_columns.push(column);
-                Expression::Fixed(FixedQuery {
+                Expression::SelectorExpression(Box::new(Expression::Fixed(FixedQuery {
                     index: self.query_fixed_index(column, Rotation::cur()),
                     column_index: column.index,
                     rotation: Rotation::cur(),
-                })
+                })))
             },
         );
 

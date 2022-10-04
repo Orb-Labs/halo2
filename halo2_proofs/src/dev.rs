@@ -55,7 +55,10 @@ struct Region {
 impl Region {
     fn update_extent(&mut self, column: Column<Any>, row: usize) {
         self.columns.insert(column);
+        self.update_rows_extent(row);
+    }
 
+    fn update_rows_extent(&mut self, row: usize) {
         // The region start is the earliest row assigned to.
         // The region end is the latest row assigned to.
         let (mut start, mut end) = self.rows.unwrap_or((row, row));
@@ -324,13 +327,17 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
 
         // Track that this selector was enabled. We require that all selectors are enabled
         // inside some region (i.e. no floating selectors).
-        self.current_region
-            .as_mut()
-            .unwrap()
-            .enabled_selectors
-            .entry(*selector)
-            .or_default()
-            .push(row);
+        if let Some(region) = self.current_region.as_mut() {
+            region.update_rows_extent(row);
+
+            region
+                .enabled_selectors
+                .entry(*selector)
+                .or_default()
+                .push(row);
+        } else {
+            panic!("`enable_selector` was called with `MockProver.current_region = None`")
+        }
 
         self.selectors[selector.0][row] = true;
 
@@ -608,57 +615,56 @@ impl<F: FieldExt> MockProver<F> {
         // Check that within each region, all cells used in instantiated gates have been
         // assigned to.
         let selector_errors = self.regions.iter().enumerate().flat_map(|(r_i, r)| {
-            r.enabled_selectors.iter().flat_map(move |(selector, at)| {
-                // Find the gates enabled by this selector
-                self.cs
-                    .gates
-                    .iter()
-                    // Assume that if a queried selector is enabled, the user wants to use the
-                    // corresponding gate in some way.
-                    //
-                    // TODO: This will trip up on the reverse case, where leaving a selector
-                    // un-enabled keeps a gate enabled. We could alternatively require that
-                    // every selector is explicitly enabled or disabled on every row? But that
-                    // seems messy and confusing.
-                    .enumerate()
-                    .filter(move |(_, g)| g.queried_selectors().contains(selector))
-                    .flat_map(move |(gate_index, gate)| {
-                        at.iter().flat_map(move |selector_row| {
-                            // Selectors are queried with no rotation.
-                            let gate_row = *dbg!(selector_row) as i32;
+            // Find the gates enabled by this selector
+            self.cs
+                .gates
+                .iter()
+                // Assume that if a queried selector is enabled, the user wants to use the
+                // corresponding gate in some way.
+                //
+                // TODO: This will trip up on the reverse case, where leaving a selector
+                // un-enabled keeps a gate enabled. We could alternatively require that
+                // every selector is explicitly enabled or disabled on every row? But that
+                // seems messy and confusing.
+                //
+                // E.g. `(1 - selector) * advice`
+                // The user should use `SelectorExpression(1 - selector) * advice` to specify
+                // that the gate is active when the selector is disabled.
+                .enumerate()
+                .flat_map(move |(gate_index, gate)| {
+                    let (start, end) = r.rows.unwrap_or((0, 0));
+                    (start..=end).flat_map(move |selector_row| {
+                        // Selectors are queried with no rotation.
+                        let gate_row = dbg!(selector_row) as i32;
 
-                            // This is far from asymptotically ideal,
-                            // but it does not seem to matter since it's in the mock prover.
-                            gate.polynomials()
-                                .iter()
-                                .filter(move |poly| self.constraint_enabled(poly, gate_row))
-                                .flat_map(|poly| dbg!(poly.queried_cells()))
-                                .filter(
-                                    |cell| dbg!(dbg!(gate.queried_cells()).contains(dbg!(cell))),
-                                )
-                                .filter_map(move |cell| {
-                                    dbg!(&cell);
-                                    // Determine where this cell should have been assigned.
-                                    let cell_row = ((gate_row + n + cell.rotation.0) % n) as usize;
-                                    // Check that it was assigned!
-                                    let cell_assigned =
-                                        r.cells.contains(&dbg!(cell.column, cell_row));
+                        // This is far from asymptotically ideal,
+                        // but it does not seem to matter since it's in the mock prover.
+                        gate.polynomials()
+                            .iter()
+                            .filter(move |poly| self.constraint_enabled(poly, gate_row))
+                            .flat_map(|poly| dbg!(poly.queried_cells()))
+                            .filter(|cell| dbg!(dbg!(gate.queried_cells()).contains(dbg!(cell))))
+                            .filter_map(move |cell| {
+                                dbg!(&cell);
+                                // Determine where this cell should have been assigned.
+                                let cell_row = ((gate_row + n + cell.rotation.0) % n) as usize;
+                                // Check that it was assigned!
+                                let cell_assigned = r.cells.contains(&dbg!(cell.column, cell_row));
 
-                                    if cell_assigned {
-                                        None
-                                    } else {
-                                        Some(VerifyFailure::CellNotAssigned {
-                                            gate: (gate_index, gate.name()).into(),
-                                            region: (r_i, r.name.clone()).into(),
-                                            gate_offset: *selector_row,
-                                            column: cell.column,
-                                            offset: cell_row as isize - r.rows.unwrap().0 as isize,
-                                        })
-                                    }
-                                })
-                        })
+                                if cell_assigned {
+                                    None
+                                } else {
+                                    Some(VerifyFailure::CellNotAssigned {
+                                        gate: (gate_index, gate.name()).into(),
+                                        region: (r_i, r.name.clone()).into(),
+                                        gate_offset: selector_row,
+                                        column: cell.column,
+                                        offset: cell_row as isize - r.rows.unwrap().0 as isize,
+                                    })
+                                }
+                            })
                     })
-            })
+                })
         });
 
         // Check that all gates are satisfied for all rows.
@@ -1121,12 +1127,17 @@ mod tests {
                 layouter.assign_region(
                     || "Faulty synthesis",
                     |mut region| {
-                        // BUG: Forget to assign a
                         config.q1.enable(&mut region, 0)?;
                         config.q2.enable(&mut region, 0)?;
                         region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::zero()))?;
 
+                        // q2 is not enabled so a does not need to be assigned.
+                        // q1 * a * q2 will always equal zero.
                         config.q1.enable(&mut region, 1)?;
+
+                        // BUG: Forget to assign a
+                        config.q1.enable(&mut region, 2)?;
+                        config.q2.enable(&mut region, 2)?;
 
                         Ok(())
                     },
@@ -1137,56 +1148,13 @@ mod tests {
         let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
-            Err(vec![
-                // b is unassigned
-                VerifyFailure::CellNotAssigned {
-                    gate: (0, "Equality check").into(),
-                    region: (0, "Faulty synthesis".to_owned()).into(),
-                    gate_offset: 2,
-                    column: Column::new(1, Any::Advice),
-                    offset: 2,
-                },
-                // Equality at gate offset 3
-                // a and b are unassigned
-                VerifyFailure::CellNotAssigned {
-                    gate: (0, "Equality check").into(),
-                    region: (0, "Faulty synthesis".to_owned()).into(),
-                    gate_offset: 3,
-                    column: Column::new(0, Any::Advice),
-                    offset: 2,
-                },
-                VerifyFailure::CellNotAssigned {
-                    gate: (0, "Equality check").into(),
-                    region: (0, "Faulty synthesis".to_owned()).into(),
-                    gate_offset: 3,
-                    column: Column::new(1, Any::Advice),
-                    offset: 3,
-                },
-                // Negated Equality at gate offset 3
-                // b is unassigned
-                VerifyFailure::CellNotAssigned {
-                    gate: (1, "Negated Equality check").into(),
-                    region: (0, "Faulty synthesis".to_owned()).into(),
-                    gate_offset: 2,
-                    column: Column::new(1, Any::Advice),
-                    offset: 2,
-                },
-                // a and b are unassigned
-                VerifyFailure::CellNotAssigned {
-                    gate: (1, "Negated Equality check").into(),
-                    region: (0, "Faulty synthesis".to_owned()).into(),
-                    gate_offset: 3,
-                    column: Column::new(0, Any::Advice),
-                    offset: 2,
-                },
-                VerifyFailure::CellNotAssigned {
-                    gate: (1, "Negated Equality check").into(),
-                    region: (0, "Faulty synthesis".to_owned()).into(),
-                    gate_offset: 3,
-                    column: Column::new(1, Any::Advice),
-                    offset: 3,
-                },
-            ])
+            Err(vec![VerifyFailure::CellNotAssigned {
+                gate: (0, "Disabled check").into(),
+                region: (0, "Faulty synthesis".to_owned()).into(),
+                gate_offset: 2,
+                column: Column::new(0, Any::Advice),
+                offset: 2,
+            }])
         );
     }
 
