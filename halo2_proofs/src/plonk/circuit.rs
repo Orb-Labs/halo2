@@ -959,7 +959,7 @@ fn apply_selector_to_constraint<F: Field, C: Into<Constraint<F>>>(
     let constraint: Constraint<F> = c.into();
     Constraint {
         name: constraint.name,
-        poly: dbg!(selector * constraint.poly),
+        poly: Expression::SelectorExpression(Box::new(selector)) * constraint.poly,
     }
 }
 
