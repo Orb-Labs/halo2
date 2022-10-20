@@ -1,6 +1,6 @@
 //! Tools for developing circuits.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::ops::{Add, Mul, Neg, Range};
 
@@ -771,8 +771,6 @@ impl<F: FieldExt> MockProver<F> {
                                                     if r.cells.contains(&(cell.column, cell_row)) {
                                                         None
                                                     } else {
-                                                        dbg!(&r.cells);
-                                                        dbg!(&(cell.column, cell_row));
                                                         Some(VerifyFailure::CellNotAssigned {
                                                             gate: (gate_index, gate.name()).into(),
                                                             region: (r_i, r.name.clone()).into(),
@@ -788,8 +786,7 @@ impl<F: FieldExt> MockProver<F> {
                                 })
                             })
                     })
-                    // Remove duplicate errors
-                    .filter(move |err| prior_errs.insert(err.clone()))
+                    .filter(move |err: &VerifyFailure| prior_errs.insert(err.clone()))
             });
 
         // Check that all gates are satisfied for all rows.
@@ -1287,9 +1284,9 @@ mod tests {
 
             fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
                 let fixed_sel = meta.complex_selector();
-                let advice_sel = dbg!(meta.advice_column());
-                let a = dbg!(meta.advice_column());
-                let b = dbg!(meta.advice_column());
+                let advice_sel = meta.advice_column();
+                let a = meta.advice_column();
+                let b = meta.advice_column();
 
                 meta.create_gate("Disabled check", |cells| {
                     let fixed_sel = cells.query_selector(fixed_sel);
