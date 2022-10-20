@@ -338,6 +338,7 @@ mod tests {
                         &|a, b| a + b,
                         &|a, b| a * b,
                         &|a, f| a * f,
+                        &|a| a,
                     );
 
                     if activation {

@@ -56,7 +56,10 @@ struct Region {
 impl Region {
     fn update_extent(&mut self, column: Column<Any>, row: usize) {
         self.columns.insert(column);
+        self.update_rows_extent(row);
+    }
 
+    fn update_rows_extent(&mut self, row: usize) {
         // The region start is the earliest row assigned to.
         // The region end is the latest row assigned to.
         let (mut start, mut end) = self.rows.unwrap_or((row, row));
@@ -342,13 +345,17 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
 
         // Track that this selector was enabled. We require that all selectors are enabled
         // inside some region (i.e. no floating selectors).
-        self.current_region
-            .as_mut()
-            .unwrap()
-            .enabled_selectors
-            .entry(*selector)
-            .or_default()
-            .push(row);
+        if let Some(region) = self.current_region.as_mut() {
+            region.update_rows_extent(row);
+
+            region
+                .enabled_selectors
+                .entry(*selector)
+                .or_default()
+                .push(row);
+        } else {
+            panic!("`enable_selector` was called with `MockProver.current_region = None`")
+        }
 
         self.selectors[selector.0][row] = true;
 
@@ -593,6 +600,64 @@ impl<F: FieldExt> MockProver<F> {
         Ok(prover)
     }
 
+    fn evaluate_real(&self, poly: &Expression<F>, row: i32) -> Value<F> {
+        let n = self.n as i32;
+        poly.evaluate(
+            &|scalar| Value::Real(scalar),
+            &|_| panic!("virtual selectors are removed during optimization"),
+            &|_| panic!("virtual columns are removed during optimization"),
+            &util::load(n, row, &self.cs.fixed_queries, &self.fixed),
+            &util::load(n, row, &self.cs.advice_queries, &self.advice),
+            &util::load_instance(n, row, &self.cs.instance_queries, &self.instance),
+            &|a| -a,
+            &|a, b| a + b,
+            &|a, b| a * b,
+            &|a, scalar| a * scalar,
+            &|a| a,
+        )
+    }
+
+    // Check if a constraint poly is enabled, taking selector expressions into account.
+    fn constraint_enabled(&self, poly: &Expression<F>, row: i32) -> bool {
+        let (is_disabled, _) = poly.evaluate(
+            // The constant zero is analogous to a disabled selector expression.
+            &|f| (f == F::zero(), Expression::Constant(f)),
+            &|_| panic!("virtual selectors are removed during optimization"),
+            &|_| panic!("virtual columns are removed during optimization"),
+            // An individual query is an enabled expression.
+            //
+            // It could be arguged that a fixed cell that has been explicitly assigned zero should
+            // be treated as a disabled selector expression.
+            &|query| (false, Expression::Fixed(query)),
+            &|query| (false, Expression::Advice(query)),
+            &|query| (false, Expression::Instance(query)),
+            // Negation of a disabled expression (-0) does not enable the expression.
+            &|is_disabled| is_disabled,
+            // The sum of two disabled expressions is a disabled expression.
+            &|(a_disabled, a_exp), (b_disabled, b_exp)| {
+                (
+                    a_disabled && b_disabled,
+                    Expression::Sum(Box::new(a_exp), Box::new(b_exp)),
+                )
+            },
+            // The product of a disabled selector expression, and anything is a disabled expression.
+            &|(a_disabled, a_exp), (b_disabled, b_exp)| {
+                (
+                    a_disabled || b_disabled,
+                    Expression::Product(Box::new(a_exp), Box::new(b_exp)),
+                )
+            },
+            &|is_disabled, _| is_disabled,
+            // If a selector expression evaluates to zero it is disabled.
+            &|(_, exp)| {
+                let real = self.evaluate_real(&exp, row);
+                (real == Value::Real(F::zero()), exp)
+            },
+        );
+
+        !is_disabled
+    }
+
     /// Returns `Ok(())` if this `MockProver` is satisfied, or a list of errors indicating
     /// the reasons that the circuit is not satisfied.
     pub fn verify(&self) -> Result<(), Vec<VerifyFailure>> {
@@ -601,26 +666,34 @@ impl<F: FieldExt> MockProver<F> {
         // Check that within each region, all cells used in instantiated gates have been
         // assigned to.
         let selector_errors = self.regions.iter().enumerate().flat_map(|(r_i, r)| {
-            r.enabled_selectors.iter().flat_map(move |(selector, at)| {
-                // Find the gates enabled by this selector
-                self.cs
-                    .gates
-                    .iter()
-                    // Assume that if a queried selector is enabled, the user wants to use the
-                    // corresponding gate in some way.
-                    //
-                    // TODO: This will trip up on the reverse case, where leaving a selector
-                    // un-enabled keeps a gate enabled. We could alternatively require that
-                    // every selector is explicitly enabled or disabled on every row? But that
-                    // seems messy and confusing.
-                    .enumerate()
-                    .filter(move |(_, g)| g.queried_selectors().contains(selector))
-                    .flat_map(move |(gate_index, gate)| {
-                        at.iter().flat_map(move |selector_row| {
-                            // Selectors are queried with no rotation.
-                            let gate_row = *selector_row as i32;
+            // Find the gates enabled by this selector
+            self.cs
+                .gates
+                .iter()
+                // This will trip up on the reverse case, where leaving a selector
+                // un-enabled keeps a gate enabled. We could alternatively require that
+                // every selector is explicitly enabled or disabled on every row? But that
+                // seems messy and confusing.
+                //
+                // Using `SelectorExpression` is the solution.
+                // E.g. `(1 - selector) * advice`
+                // The user should use `SelectorExpression(1 - selector) * advice` to specify
+                // that the gate is active when the selector is disabled.
+                .enumerate()
+                .flat_map(move |(gate_index, gate)| {
+                    let (start, end) = r.rows.unwrap_or((0, 0));
+                    (start..=end).flat_map(move |selector_row| {
+                        // Selectors are queried with no rotation.
+                        let gate_row = selector_row as i32;
 
-                            gate.queried_cells().iter().filter_map(move |cell| {
+                        // This is far from asymptotically ideal,
+                        // but it does not seem to matter since it's in the mock prover.
+                        gate.polynomials()
+                            .iter()
+                            .filter(move |poly| self.constraint_enabled(poly, gate_row))
+                            .flat_map(|poly| poly.queried_cells())
+                            .filter(|cell| gate.queried_cells().contains(cell))
+                            .filter_map(move |cell| {
                                 // Determine where this cell should have been assigned.
                                 let cell_row = ((gate_row + n + cell.rotation.0) % n) as usize;
 
@@ -634,7 +707,7 @@ impl<F: FieldExt> MockProver<F> {
                                             _ => Some(VerifyFailure::InstanceCellNotAssigned {
                                                 gate: (gate_index, gate.name()).into(),
                                                 region: (r_i, r.name.clone()).into(),
-                                                gate_offset: *selector_row,
+                                                gate_offset: selector_row,
                                                 column: cell.column.try_into().unwrap(),
                                                 row: cell_row,
                                             }),
@@ -648,7 +721,7 @@ impl<F: FieldExt> MockProver<F> {
                                             Some(VerifyFailure::CellNotAssigned {
                                                 gate: (gate_index, gate.name()).into(),
                                                 region: (r_i, r.name.clone()).into(),
-                                                gate_offset: *selector_row,
+                                                gate_offset: selector_row,
                                                 column: cell.column,
                                                 offset: cell_row as isize
                                                     - r.rows.unwrap().0 as isize,
@@ -657,9 +730,8 @@ impl<F: FieldExt> MockProver<F> {
                                     }
                                 }
                             })
-                        })
                     })
-            })
+                })
         });
 
         // Check that all gates are satisfied for all rows.
@@ -672,23 +744,7 @@ impl<F: FieldExt> MockProver<F> {
                     // We iterate from n..2n so we can just reduce to handle wrapping.
                     (n..(2 * n)).flat_map(move |row| {
                         gate.polynomials().iter().enumerate().filter_map(
-                            move |(poly_index, poly)| match poly.evaluate(
-                                &|scalar| Value::Real(scalar),
-                                &|_| panic!("virtual selectors are removed during optimization"),
-                                &|_| panic!("virtual columns are removed during optimization"),
-                                &util::load(n, row, &self.cs.fixed_queries, &self.fixed),
-                                &util::load(n, row, &self.cs.advice_queries, &self.advice),
-                                &util::load_instance(
-                                    n,
-                                    row,
-                                    &self.cs.instance_queries,
-                                    &self.instance,
-                                ),
-                                &|a| -a,
-                                &|a, b| a + b,
-                                &|a, b| a * b,
-                                &|a, scalar| a * scalar,
-                            ) {
+                            move |(poly_index, poly)| match self.evaluate_real(poly, row) {
                                 Value::Real(x) if x.is_zero_vartime() => None,
                                 Value::Real(_) => Some(VerifyFailure::ConstraintNotSatisfied {
                                     constraint: (
@@ -771,6 +827,7 @@ impl<F: FieldExt> MockProver<F> {
                             &|a, b| a + b,
                             &|a, b| a * b,
                             &|a, scalar| a * scalar,
+                            &|a| a,
                         )
                     };
 
@@ -1013,8 +1070,8 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            Advice, Any, Circuit, Column, ConstraintSystem, DynamicTableInfo, Error, Expression,
-            Selector, TableColumn,
+            Advice, Any, Circuit, Column, ConstraintSystem, Constraints, DynamicTableInfo, Error,
+            Expression, Selector, TableColumn,
         },
         poly::Rotation,
     };
@@ -1026,7 +1083,8 @@ mod tests {
         #[derive(Clone)]
         struct FaultyCircuitConfig {
             a: Column<Advice>,
-            q: Selector,
+            b: Column<Advice>,
+            q1: Selector,
         }
 
         struct FaultyCircuit {}
@@ -1038,18 +1096,28 @@ mod tests {
             fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
                 let a = meta.advice_column();
                 let b = meta.advice_column();
-                let q = meta.selector();
+                let q1 = meta.selector();
 
                 meta.create_gate("Equality check", |cells| {
                     let a = cells.query_advice(a, Rotation::prev());
                     let b = cells.query_advice(b, Rotation::cur());
-                    let q = cells.query_selector(q);
+                    let q = cells.query_selector(q1);
 
                     // If q is enabled, a and b must be assigned to.
                     vec![q * (a - b)]
                 });
 
-                FaultyCircuitConfig { a, q }
+                meta.create_gate("Negated Equality check", |cells| {
+                    let a = cells.query_advice(a, Rotation::prev());
+                    let b = cells.query_advice(b, Rotation::cur());
+                    let q = cells.query_selector(q1);
+
+                    // If q is enabled, a and b must be assigned to.
+                    // if q is disabled a and b do not need to be assigned despite q being negated.
+                    vec![(-q) * -(a - b)]
+                });
+
+                FaultyCircuitConfig { a, b, q1 }
             }
 
             fn without_witnesses(&self) -> Self {
@@ -1064,15 +1132,266 @@ mod tests {
                 layouter.assign_region(
                     || "Faulty synthesis",
                     |mut region| {
-                        // Enable the equality gate.
-                        config.q.enable(&mut region, 1)?;
-
                         // Assign a = 0.
                         region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::zero()))?;
+                        region.assign_advice(|| "b", config.b, 1, || Value::known(Fp::zero()))?;
 
+                        // Enable the equality gate.
+                        config.q1.enable(&mut region, 1)?;
                         // BUG: Forget to assign b = 0! This could go unnoticed during
                         // development, because cell values default to zero, which in this
                         // case is fine, but for other assignments would be broken.
+                        config.q1.enable(&mut region, 2)?;
+                        region.assign_advice(|| "a", config.a, 1, || Value::known(Fp::zero()))?;
+
+                        // BUG: Forget to assign a and b.
+                        config.q1.enable(&mut region, 3)?;
+
+                        Ok(())
+                    },
+                )
+            }
+        }
+
+        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        assert_eq!(
+            prover.verify(),
+            Err(vec![
+                // b is unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 2,
+                    column: Column::new(1, Any::Advice),
+                    offset: 2,
+                },
+                // Equality at gate offset 3
+                // a and b are unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(0, Any::Advice),
+                    offset: 2,
+                },
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(1, Any::Advice),
+                    offset: 3,
+                },
+                // Negated Equality at gate offset 3
+                // b is unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (1, "Negated Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 2,
+                    column: Column::new(1, Any::Advice),
+                    offset: 2,
+                },
+                // a and b are unassigned
+                VerifyFailure::CellNotAssigned {
+                    gate: (1, "Negated Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(0, Any::Advice),
+                    offset: 2,
+                },
+                VerifyFailure::CellNotAssigned {
+                    gate: (1, "Negated Equality check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(1, Any::Advice),
+                    offset: 3,
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn unassigned_cell_advice_selector() {
+        const K: u32 = 4;
+
+        #[derive(Clone)]
+        struct FaultyCircuitConfig {
+            fixed_sel: Selector,
+            advice_sel: Column<Advice>,
+            a: Column<Advice>,
+            b: Column<Advice>,
+        }
+
+        struct FaultyCircuit {}
+
+        impl Circuit<Fp> for FaultyCircuit {
+            type Config = FaultyCircuitConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+
+            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                let fixed_sel = meta.complex_selector();
+                let advice_sel = meta.advice_column();
+                let a = meta.advice_column();
+                let b = meta.advice_column();
+
+                meta.create_gate("Disabled check", |cells| {
+                    let fixed_sel = cells.query_selector(fixed_sel);
+                    let advice_sel = cells.query_advice(advice_sel, Rotation::cur());
+                    let a = cells.query_advice(a, Rotation::cur());
+                    let b = cells.query_advice(b, Rotation::cur());
+
+                    Constraints::with_selector(fixed_sel * advice_sel, [a - b])
+                });
+
+                FaultyCircuitConfig {
+                    fixed_sel,
+                    advice_sel,
+                    a,
+                    b,
+                }
+            }
+
+            fn without_witnesses(&self) -> Self {
+                Self {}
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fp>,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "Faulty synthesis",
+                    |mut region| {
+                        config.fixed_sel.enable(&mut region, 0)?;
+                        region.assign_advice(
+                            || "advice_selector",
+                            config.advice_sel,
+                            0,
+                            || Value::known(Fp::one()),
+                        )?;
+                        region.assign_advice(
+                            || "a",
+                            config.a,
+                            0,
+                            || Value::known(Fp::from(u64::MAX)),
+                        )?;
+                        region.assign_advice(
+                            || "b",
+                            config.b,
+                            0,
+                            || Value::known(Fp::from(u64::MAX)),
+                        )?;
+
+                        // The advice selector is disabled (assigned 0) so a, and b don't need to be assigned.
+                        config.fixed_sel.enable(&mut region, 1)?;
+                        region.assign_advice(
+                            || "advice_selector",
+                            config.advice_sel,
+                            1,
+                            || Value::known(Fp::zero()),
+                        )?;
+
+                        // The advice selector is unassigned, it defaults to disabled (zero).
+                        // TODO this is incompatible with random unassigned advice values #663.
+                        config.fixed_sel.enable(&mut region, 2)?;
+
+                        // BUG: The advice selector is enabled so a, and b should have been assigned.
+                        config.fixed_sel.enable(&mut region, 3)?;
+                        region.assign_advice(
+                            || "advice_selector",
+                            config.advice_sel,
+                            3,
+                            || Value::known(Fp::one()),
+                        )?;
+
+                        Ok(())
+                    },
+                )
+            }
+        }
+
+        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        assert_eq!(
+            prover.verify(),
+            Err(vec![
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Disabled check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(1, Any::Advice),
+                    offset: 3,
+                },
+                VerifyFailure::CellNotAssigned {
+                    gate: (0, "Disabled check").into(),
+                    region: (0, "Faulty synthesis".to_owned()).into(),
+                    gate_offset: 3,
+                    column: Column::new(2, Any::Advice),
+                    offset: 3,
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn unassigned_cell_two_selectors() {
+        const K: u32 = 4;
+
+        #[derive(Clone)]
+        struct FaultyCircuitConfig {
+            q1: Selector,
+            q2: Selector,
+            a: Column<Advice>,
+        }
+
+        struct FaultyCircuit {}
+
+        impl Circuit<Fp> for FaultyCircuit {
+            type Config = FaultyCircuitConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+
+            fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+                let a = meta.advice_column();
+                let q1 = meta.complex_selector();
+                let q2 = meta.complex_selector();
+
+                meta.create_gate("Disabled check", |cells| {
+                    let q1 = cells.query_selector(q1);
+                    let q2 = cells.query_selector(q2);
+                    let a = cells.query_advice(a, Rotation::cur());
+
+                    Constraints::with_selector(
+                        Expression::SelectorExpression(Box::new(q1)),
+                        [a * q2],
+                    )
+                });
+
+                FaultyCircuitConfig { q1, q2, a }
+            }
+
+            fn without_witnesses(&self) -> Self {
+                Self {}
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fp>,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "Faulty synthesis",
+                    |mut region| {
+                        config.q1.enable(&mut region, 0)?;
+                        config.q2.enable(&mut region, 0)?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::zero()))?;
+
+                        // q2 is not enabled so a does not need to be assigned.
+                        // q1 * a * q2 will always equal zero.
+                        config.q1.enable(&mut region, 1)?;
+
+                        // BUG: Forget to assign a
+                        config.q1.enable(&mut region, 2)?;
+                        config.q2.enable(&mut region, 2)?;
+
                         Ok(())
                     },
                 )
@@ -1083,11 +1402,11 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::CellNotAssigned {
-                gate: (0, "Equality check").into(),
+                gate: (0, "Disabled check").into(),
                 region: (0, "Faulty synthesis".to_owned()).into(),
-                gate_offset: 1,
-                column: Column::new(1, Any::Advice),
-                offset: 1,
+                gate_offset: 2,
+                column: Column::new(0, Any::Advice),
+                offset: 2,
             }])
         );
     }

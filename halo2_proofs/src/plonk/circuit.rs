@@ -567,6 +567,20 @@ pub enum Expression<F> {
     /// Virtual columns are used internally by dynamic tables.
     /// There is no way for a user to construct a virtual column.
     VirtualColumn(VirtualColumn),
+    /// This is an Expression which will be treated as a `Selector` by the mock prover.
+    /// Wraping an Expression has no effect on evalutation, it only attaches meta data denoting the
+    /// portions of a constraint expression that acts as a selector.
+    ///
+    /// If the selector expression evaluates to zero the mock prover will not require cells queried by
+    /// the surrounding constraint expression be assigned.
+    ///
+    /// E.g. `selector * advice_bool * query_unassigned_cell` will produce
+    /// [`VerifyFailure::CellNotAssigned`](crate::dev::VerifyFailure::CellNotAssigned),
+    /// while `SelectorExpression(selector * advice_bool) * query_unassigned_cell` will not.
+    ///
+    /// [`Constraints::with_selector(selector_expression, constraints)`][Constraints::with_selector]
+    /// produces annotated expressions of the form `SelectorExpression(selector_expression) * c`.
+    SelectorExpression(Box<Expression<F>>),
     /// This is a fixed column queried at a certain relative location
     Fixed(FixedQuery),
     /// This is an advice (witness) column queried at a certain relative location
@@ -584,8 +598,7 @@ pub enum Expression<F> {
 }
 
 impl<F: Field> Expression<F> {
-    /// Evaluate the polynomial using the provided closures to perform the
-    /// operations.
+    /// Evaluate the polynomial using the provided closures to perform the operations.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate<T>(
         &self,
@@ -599,11 +612,25 @@ impl<F: Field> Expression<F> {
         sum: &impl Fn(T, T) -> T,
         product: &impl Fn(T, T) -> T,
         scaled: &impl Fn(T, F) -> T,
+        selector_expression: &impl Fn(T) -> T,
     ) -> T {
         match self {
             Expression::Constant(scalar) => constant(*scalar),
             Expression::Selector(selector) => selector_column(*selector),
             Expression::VirtualColumn(virtual_col) => virtual_column(*virtual_col),
+            Expression::SelectorExpression(exp) => selector_expression(exp.evaluate(
+                constant,
+                selector_column,
+                virtual_column,
+                fixed_column,
+                advice_column,
+                instance_column,
+                negated,
+                sum,
+                product,
+                scaled,
+                selector_expression,
+            )),
             Expression::Fixed(query) => fixed_column(*query),
             Expression::Advice(query) => advice_column(*query),
             Expression::Instance(query) => instance_column(*query),
@@ -619,6 +646,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 negated(a)
             }
@@ -634,6 +662,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 let b = b.evaluate(
                     constant,
@@ -646,6 +675,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 sum(a, b)
             }
@@ -661,6 +691,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 let b = b.evaluate(
                     constant,
@@ -673,6 +704,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 product(a, b)
             }
@@ -688,6 +720,7 @@ impl<F: Field> Expression<F> {
                     sum,
                     product,
                     scaled,
+                    selector_expression,
                 );
                 scaled(a, *f)
             }
@@ -707,6 +740,7 @@ impl<F: Field> Expression<F> {
             Expression::Sum(a, b) => max(a.degree(), b.degree()),
             Expression::Product(a, b) => a.degree() + b.degree(),
             Expression::Scaled(poly, _) => poly.degree(),
+            Expression::SelectorExpression(exp) => exp.degree(),
         }
     }
 
@@ -728,6 +762,7 @@ impl<F: Field> Expression<F> {
             &|a, b| a || b,
             &|a, b| a || b,
             &|a, _| a,
+            &|a| a,
         )
     }
 
@@ -756,6 +791,57 @@ impl<F: Field> Expression<F> {
             &op,
             &op,
             &|a, _| a,
+            &|a| a,
+        )
+    }
+
+    /// Extracts VirtualCells from this expression.
+    pub(crate) fn queried_cells(&self) -> Vec<VirtualCell> {
+        self.evaluate(
+            &|_| vec![],
+            &|_| vec![],
+            &|_| vec![],
+            &|query: FixedQuery| {
+                vec![(
+                    Column {
+                        index: query.column_index,
+                        column_type: Fixed,
+                    },
+                    query.rotation,
+                )
+                    .into()]
+            },
+            &|query: AdviceQuery| {
+                vec![(
+                    Column {
+                        index: query.column_index,
+                        column_type: Advice,
+                    },
+                    query.rotation,
+                )
+                    .into()]
+            },
+            &|query: InstanceQuery| {
+                vec![(
+                    Column {
+                        index: query.column_index,
+                        column_type: Instance,
+                    },
+                    query.rotation,
+                )
+                    .into()]
+            },
+            &|a| a,
+            &|mut a, mut b| {
+                a.append(&mut b);
+                a
+            },
+            &|mut a, mut b| {
+                a.append(&mut b);
+                a
+            },
+            &|a, _| a,
+            &|a| a,
         )
     }
 }
@@ -766,6 +852,9 @@ impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
             Expression::Constant(scalar) => f.debug_tuple("Constant").field(scalar).finish(),
             Expression::Selector(selector) => f.debug_tuple("Selector").field(selector).finish(),
             Expression::VirtualColumn(vc) => f.debug_tuple("VirtualColumn").field(vc).finish(),
+            Expression::SelectorExpression(exp) => {
+                f.debug_tuple("SelectorExpression").field(exp).finish()
+            }
             // Skip enum variant and print query struct directly to maintain backwards compatibility.
             Expression::Fixed(FixedQuery {
                 index,
@@ -858,7 +947,7 @@ pub(crate) struct PointIndex(pub usize);
 
 /// A "virtual cell" is a PLONK cell that has been queried at a particular relative offset
 /// within a custom gate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct VirtualCell {
     pub(crate) column: Column<Any>,
     pub(crate) rotation: Rotation,
@@ -959,7 +1048,7 @@ fn apply_selector_to_constraint<F: Field, C: Into<Constraint<F>>>(
     let constraint: Constraint<F> = c.into();
     Constraint {
         name: constraint.name,
-        poly: selector * constraint.poly,
+        poly: Expression::SelectorExpression(Box::new(selector)) * constraint.poly,
     }
 }
 
@@ -1493,6 +1582,7 @@ impl<F: Field> ConstraintSystem<F> {
                 &|a, b| a + b,
                 &|a, b| a * b,
                 &|a, f| a * f,
+                &|a| a,
             );
         }
 
@@ -1583,7 +1673,9 @@ impl<F: Field> ConstraintSystem<F> {
                         assert!(!selector.is_simple());
                     }
 
-                    selector_replacements[selector.0].clone()
+                    Expression::SelectorExpression(Box::new(
+                        selector_replacements[selector.0].clone(),
+                    ))
                 },
                 &|query| Expression::VirtualColumn(query),
                 &|query| Expression::Fixed(query),
@@ -1593,6 +1685,7 @@ impl<F: Field> ConstraintSystem<F> {
                 &|a, b| a + b,
                 &|a, b| a * b,
                 &|a, f| a * f,
+                &|a| Expression::SelectorExpression(Box::new(a)),
             );
         }
 

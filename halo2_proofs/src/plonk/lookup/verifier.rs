@@ -128,6 +128,7 @@ impl<C: CurveAffine> Evaluated<C> {
                             &|a, b| a + &b,
                             &|a, b| a * &b,
                             &|a, scalar| a * &scalar,
+                            &|a| a,
                         )
                     })
                     .fold(C::Scalar::zero(), |acc, eval| acc * &*theta + &eval)

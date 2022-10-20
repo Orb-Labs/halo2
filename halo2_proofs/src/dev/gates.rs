@@ -151,6 +151,7 @@ impl CircuitGates {
                                     format!("{} * {}", a, util::format_value(s))
                                 }
                             },
+                            &|a| a,
                         ),
                         queries: constraint.evaluate(
                             &|_| BTreeSet::default(),
@@ -183,6 +184,7 @@ impl CircuitGates {
                                 a
                             },
                             &|a, _| a,
+                            &|a| a,
                         ),
                     })
                     .collect(),
@@ -205,6 +207,7 @@ impl CircuitGates {
                         &|(a_n, a_a, a_m), (b_n, b_a, b_m)| (a_n + b_n, a_a + b_a + 1, a_m + b_m),
                         &|(a_n, a_a, a_m), (b_n, b_a, b_m)| (a_n + b_n, a_a + b_a, a_m + b_m + 1),
                         &|(a_n, a_a, a_m), _| (a_n, a_a, a_m + 1),
+                        &|a| a,
                     )
                 })
             })

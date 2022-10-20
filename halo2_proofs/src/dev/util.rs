@@ -158,6 +158,7 @@ pub(super) fn cell_values<'a, F: FieldExt>(
             a
         },
         &|a, _| a,
+        &|a| a,
     );
     cell_values.into_iter().collect()
 }

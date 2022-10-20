@@ -72,6 +72,7 @@ impl FailureLocation {
                         a
                     },
                     &|a, _| a,
+                    &|a| a,
                 )
             })
             .collect();
@@ -450,6 +451,7 @@ fn render_lookup<F: FieldExt>(
             &|_, _| panic!("no sums in table expressions"),
             &|_, _| panic!("no products in table expressions"),
             &|_, _| panic!("no scaling in table expressions"),
+            &|_| panic!("no selector expressions in table expressions"),
         )
     });
 
@@ -516,6 +518,7 @@ fn render_lookup<F: FieldExt>(
                 a
             },
             &|a, _| a,
+            &|a| a,
         );
 
         // Collect the necessary rendering information:
