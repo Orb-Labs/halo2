@@ -18,7 +18,7 @@ use crate::{
 mod emitter;
 
 /// The location within the circuit at which a particular [`VerifyFailure`] occurred.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum FailureLocation {
     /// A location inside a region.
     InRegion {
@@ -109,7 +109,7 @@ impl FailureLocation {
 }
 
 /// The reasons why a particular circuit is not satisfied.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum VerifyFailure {
     /// A cell used in an active gate was not assigned to.
     DynamicTableCellNotAssigned {
@@ -196,6 +196,59 @@ pub enum VerifyFailure {
         /// The location at which the permutation is not satisfied.
         location: FailureLocation,
     },
+}
+
+impl VerifyFailure {
+    /// The region an error occurred in.
+    pub fn region(&self) -> Option<&metadata::Region> {
+        match self {
+            VerifyFailure::DynamicTableCellNotAssigned { region, .. }
+            | VerifyFailure::CellNotAssigned { region, .. }
+            | VerifyFailure::InstanceCellNotAssigned { region, .. } => Some(region),
+            VerifyFailure::ConstraintPoisoned { .. } => None,
+            VerifyFailure::ConstraintNotSatisfied { location, .. }
+            | VerifyFailure::Lookup { location, .. }
+            | VerifyFailure::Permutation { location, .. } => match location {
+                FailureLocation::InRegion { region, .. } => Some(region),
+                FailureLocation::OutsideRegion { .. } => None,
+            },
+        }
+    }
+
+    /// The offset in region an error occurred at.
+    pub fn offset(&self) -> Option<isize> {
+        match self {
+            VerifyFailure::DynamicTableCellNotAssigned { offset, .. } => {
+                Some((*offset).try_into().unwrap())
+            }
+            VerifyFailure::InstanceCellNotAssigned { .. } => None,
+            VerifyFailure::CellNotAssigned { offset, .. } => Some(*offset),
+            VerifyFailure::ConstraintPoisoned { .. } => None,
+            VerifyFailure::ConstraintNotSatisfied { location, .. }
+            | VerifyFailure::Lookup { location, .. }
+            | VerifyFailure::Permutation { location, .. } => match location {
+                FailureLocation::InRegion { offset, .. } => Some((*offset).try_into().unwrap()),
+                FailureLocation::OutsideRegion { .. } => None,
+            },
+        }
+    }
+
+    /// The absolute row an error occurred at.
+    /// `None` for errors that occur in a region.
+    pub fn row(&self) -> Option<usize> {
+        match self {
+            VerifyFailure::DynamicTableCellNotAssigned { .. }
+            | VerifyFailure::CellNotAssigned { .. } => None,
+            VerifyFailure::InstanceCellNotAssigned { row, .. } => Some(*row),
+            VerifyFailure::ConstraintPoisoned { .. } => None,
+            VerifyFailure::ConstraintNotSatisfied { location, .. }
+            | VerifyFailure::Lookup { location, .. }
+            | VerifyFailure::Permutation { location, .. } => match location {
+                FailureLocation::InRegion { .. } => None,
+                FailureLocation::OutsideRegion { row, .. } => Some(*row),
+            },
+        }
+    }
 }
 
 impl fmt::Display for VerifyFailure {

@@ -4,7 +4,7 @@ use crate::plonk::{self, Any};
 use std::fmt;
 
 /// Metadata about a column within a circuit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Column {
     /// The type of the column.
     pub(super) column_type: Any,
@@ -35,7 +35,7 @@ impl From<plonk::Column<Any>> for Column {
 
 /// A "virtual cell" is a PLONK cell that has been queried at a particular relative offset
 /// within a custom gate.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct VirtualCell {
     name: &'static str,
     pub(super) column: Column,
@@ -83,7 +83,7 @@ impl fmt::Display for VirtualCell {
 }
 
 /// Metadata about a configured gate within a circuit.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Gate {
     /// The index of the active gate. These indices are assigned in the order in which
     /// `ConstraintSystem::create_gate` is called during `Circuit::configure`.
@@ -106,7 +106,7 @@ impl From<(usize, &'static str)> for Gate {
 }
 
 /// Metadata about a configured constraint within a circuit.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Constraint {
     /// The gate containing the constraint.
     pub(super) gate: Gate,
@@ -143,7 +143,7 @@ impl From<(Gate, usize, &'static str)> for Constraint {
 }
 
 /// Metadata about an assigned region within a circuit.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Region {
     /// The index of the region. These indices are assigned in the order in which
     /// `Layouter::assign_region` is called during `Circuit::synthesize`.

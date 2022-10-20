@@ -1,6 +1,6 @@
 //! Tools for developing circuits.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 use std::ops::{Add, Mul, Neg, Range};
 
@@ -606,8 +606,18 @@ impl<F: FieldExt> MockProver<F> {
             &|scalar| Value::Real(scalar),
             &|_| panic!("virtual selectors are removed during optimization"),
             &|_| panic!("virtual columns are removed during optimization"),
-            &util::load(n, row, &self.cs.fixed_queries, &self.fixed),
-            &util::load(n, row, &self.cs.advice_queries, &self.advice),
+            &|q| {
+                let r = util::load(n, row, &self.cs.fixed_queries, &self.fixed)(q);
+
+                eprintln!("query: {:?}\nrow: {}\n{:?}", q, row, r);
+                r
+            },
+            &|q| {
+                let r = util::load(n, row, &self.cs.advice_queries, &self.advice)(q);
+
+                eprintln!("query: {:?}\nrow: {}\n{:?}", q, row, r);
+                r
+            },
             &util::load_instance(n, row, &self.cs.instance_queries, &self.instance),
             &|a| -a,
             &|a, b| a + b,
@@ -655,6 +665,46 @@ impl<F: FieldExt> MockProver<F> {
             },
         );
 
+        if !is_disabled {
+            poly.evaluate(
+                // The constant zero is analogous to a disabled selector expression.
+                &|f| (f == F::zero(), Expression::Constant(f)),
+                &|_| panic!("virtual selectors are removed during optimization"),
+                &|_| panic!("virtual columns are removed during optimization"),
+                // An individual query is an enabled expression.
+                //
+                // It could be arguged that a fixed cell that has been explicitly assigned zero should
+                // be treated as a disabled selector expression.
+                &|query| (false, Expression::Fixed(query)),
+                &|query| (false, Expression::Advice(query)),
+                &|query| (false, Expression::Instance(query)),
+                // Negation of a disabled expression (-0) does not enable the expression.
+                &|is_disabled| is_disabled,
+                // The sum of two disabled expressions is a disabled expression.
+                &|(a_disabled, a_exp), (b_disabled, b_exp)| {
+                    (
+                        a_disabled && b_disabled,
+                        Expression::Sum(Box::new(a_exp), Box::new(b_exp)),
+                    )
+                },
+                // The product of a disabled selector expression, and anything is a disabled expression.
+                &|(a_disabled, a_exp), (b_disabled, b_exp)| {
+                    (
+                        a_disabled || b_disabled,
+                        Expression::Product(Box::new(a_exp), Box::new(b_exp)),
+                    )
+                },
+                &|is_disabled, _| is_disabled,
+                // If a selector expression evaluates to zero it is disabled.
+                &|(_, exp)| {
+                    let real = self.evaluate_real(&exp, row);
+                    eprintln!("selector exp: {:?}\n={:?}\nrow: {}", exp, real, row);
+
+                    (real == Value::Real(F::zero()), exp)
+                },
+            );
+        }
+
         !is_disabled
     }
 
@@ -665,74 +715,82 @@ impl<F: FieldExt> MockProver<F> {
 
         // Check that within each region, all cells used in instantiated gates have been
         // assigned to.
-        let selector_errors = self.regions.iter().enumerate().flat_map(|(r_i, r)| {
-            // Find the gates enabled by this selector
-            self.cs
-                .gates
-                .iter()
-                // This will trip up on the reverse case, where leaving a selector
-                // un-enabled keeps a gate enabled. We could alternatively require that
-                // every selector is explicitly enabled or disabled on every row? But that
-                // seems messy and confusing.
-                //
-                // Using `SelectorExpression` is the solution.
-                // E.g. `(1 - selector) * advice`
-                // The user should use `SelectorExpression(1 - selector) * advice` to specify
-                // that the gate is active when the selector is disabled.
-                .enumerate()
-                .flat_map(move |(gate_index, gate)| {
-                    let (start, end) = r.rows.unwrap_or((0, 0));
-                    (start..=end).flat_map(move |selector_row| {
-                        // Selectors are queried with no rotation.
-                        let gate_row = selector_row as i32;
-
-                        // This is far from asymptotically ideal,
-                        // but it does not seem to matter since it's in the mock prover.
-                        gate.polynomials()
+        let selector_errors =
+            self.regions.iter().enumerate().flat_map(|(r_i, r)| {
+                let mut prior_errs = HashSet::new();
+                r.enabled_selectors
+                    .iter()
+                    .flat_map(move |(selector, at)| {
+                        // Find the gates enabled by this selector
+                        self.cs
+                            .gates
                             .iter()
-                            .filter(move |poly| self.constraint_enabled(poly, gate_row))
-                            .flat_map(|poly| poly.queried_cells())
-                            .filter(|cell| gate.queried_cells().contains(cell))
-                            .filter_map(move |cell| {
-                                // Determine where this cell should have been assigned.
-                                let cell_row = ((gate_row + n + cell.rotation.0) % n) as usize;
+                            // Assume that if a queried selector is enabled, the user wants to use the
+                            // corresponding gate in some way.
+                            //
+                            // TODO: This will trip up on the reverse case, where leaving a selector
+                            // un-enabled keeps a gate enabled. We could alternatively require that
+                            // every selector is explicitly enabled or disabled on every row? But that
+                            // seems messy and confusing.
+                            .enumerate()
+                            .filter(move |(_, g)| g.queried_selectors().contains(selector))
+                            .flat_map(move |(gate_index, gate)| {
+                                at.iter().flat_map(move |selector_row| {
+                                    // Selectors are queried with no rotation.
+                                    let gate_row = *selector_row as i32;
 
-                                match cell.column.column_type() {
-                                    Any::Instance => {
-                                        // Handle instance cells, which are not in the region.
-                                        let instance_value =
-                                            &self.instance[cell.column.index()][cell_row];
-                                        match instance_value {
-                                            InstanceValue::Assigned(_) => None,
-                                            _ => Some(VerifyFailure::InstanceCellNotAssigned {
-                                                gate: (gate_index, gate.name()).into(),
-                                                region: (r_i, r.name.clone()).into(),
-                                                gate_offset: selector_row,
-                                                column: cell.column.try_into().unwrap(),
-                                                row: cell_row,
-                                            }),
-                                        }
-                                    }
-                                    _ => {
-                                        // Check that it was assigned!
-                                        if r.cells.contains(&(cell.column, cell_row)) {
-                                            None
-                                        } else {
-                                            Some(VerifyFailure::CellNotAssigned {
-                                                gate: (gate_index, gate.name()).into(),
-                                                region: (r_i, r.name.clone()).into(),
-                                                gate_offset: selector_row,
-                                                column: cell.column,
-                                                offset: cell_row as isize
-                                                    - r.rows.unwrap().0 as isize,
-                                            })
-                                        }
-                                    }
-                                }
+                                    gate.polynomials()
+                                        .iter()
+                                        .filter(move |poly| self.constraint_enabled(poly, gate_row))
+                                        .flat_map(|poly| poly.queried_cells())
+                                        // filter out selector fixed queries
+                                        .filter(|cell| gate.queried_cells().contains(cell))
+                                        .filter_map(move |cell| {
+                                            // Determine where this cell should have been assigned.
+                                            let cell_row =
+                                                ((gate_row + n + cell.rotation.0) % n) as usize;
+
+                                            match cell.column.column_type() {
+                                                Any::Instance => {
+                                                    // Handle instance cells, which are not in the region.
+                                                    let instance_value = &self.instance
+                                                        [cell.column.index()][cell_row];
+                                                    match instance_value {
+                                                InstanceValue::Assigned(_) => None,
+                                                _ => Some(VerifyFailure::InstanceCellNotAssigned {
+                                                    gate: (gate_index, gate.name()).into(),
+                                                    region: (r_i, r.name.clone()).into(),
+                                                    gate_offset: *selector_row,
+                                                    column: cell.column.try_into().unwrap(),
+                                                    row: cell_row,
+                                                }),
+                                            }
+                                                }
+                                                _ => {
+                                                    // Check that it was assigned!
+                                                    if r.cells.contains(&(cell.column, cell_row)) {
+                                                        None
+                                                    } else {
+                                                        dbg!(&r.cells);
+                                                        dbg!(&(cell.column, cell_row));
+                                                        Some(VerifyFailure::CellNotAssigned {
+                                                            gate: (gate_index, gate.name()).into(),
+                                                            region: (r_i, r.name.clone()).into(),
+                                                            gate_offset: *selector_row,
+                                                            column: cell.column,
+                                                            offset: cell_row as isize
+                                                                - r.rows.unwrap().0 as isize,
+                                                        })
+                                                    }
+                                                }
+                                            }
+                                        })
+                                })
                             })
                     })
-                })
-        });
+                    // Remove duplicate errors
+                    .filter(move |err| prior_errs.insert(err.clone()))
+            });
 
         // Check that all gates are satisfied for all rows.
         let gate_errors =
@@ -1229,9 +1287,9 @@ mod tests {
 
             fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
                 let fixed_sel = meta.complex_selector();
-                let advice_sel = meta.advice_column();
-                let a = meta.advice_column();
-                let b = meta.advice_column();
+                let advice_sel = dbg!(meta.advice_column());
+                let a = dbg!(meta.advice_column());
+                let b = dbg!(meta.advice_column());
 
                 meta.create_gate("Disabled check", |cells| {
                     let fixed_sel = cells.query_selector(fixed_sel);
