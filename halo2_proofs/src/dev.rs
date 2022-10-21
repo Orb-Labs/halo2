@@ -665,46 +665,6 @@ impl<F: FieldExt> MockProver<F> {
             },
         );
 
-        if !is_disabled {
-            poly.evaluate(
-                // The constant zero is analogous to a disabled selector expression.
-                &|f| (f == F::zero(), Expression::Constant(f)),
-                &|_| panic!("virtual selectors are removed during optimization"),
-                &|_| panic!("virtual columns are removed during optimization"),
-                // An individual query is an enabled expression.
-                //
-                // It could be arguged that a fixed cell that has been explicitly assigned zero should
-                // be treated as a disabled selector expression.
-                &|query| (false, Expression::Fixed(query)),
-                &|query| (false, Expression::Advice(query)),
-                &|query| (false, Expression::Instance(query)),
-                // Negation of a disabled expression (-0) does not enable the expression.
-                &|is_disabled| is_disabled,
-                // The sum of two disabled expressions is a disabled expression.
-                &|(a_disabled, a_exp), (b_disabled, b_exp)| {
-                    (
-                        a_disabled && b_disabled,
-                        Expression::Sum(Box::new(a_exp), Box::new(b_exp)),
-                    )
-                },
-                // The product of a disabled selector expression, and anything is a disabled expression.
-                &|(a_disabled, a_exp), (b_disabled, b_exp)| {
-                    (
-                        a_disabled || b_disabled,
-                        Expression::Product(Box::new(a_exp), Box::new(b_exp)),
-                    )
-                },
-                &|is_disabled, _| is_disabled,
-                // If a selector expression evaluates to zero it is disabled.
-                &|(_, exp)| {
-                    let real = self.evaluate_real(&exp, row);
-                    eprintln!("selector exp: {:?}\n={:?}\nrow: {}", exp, real, row);
-
-                    (real == Value::Real(F::zero()), exp)
-                },
-            );
-        }
-
         !is_disabled
     }
 
