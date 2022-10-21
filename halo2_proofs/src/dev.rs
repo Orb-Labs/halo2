@@ -606,18 +606,8 @@ impl<F: FieldExt> MockProver<F> {
             &|scalar| Value::Real(scalar),
             &|_| panic!("virtual selectors are removed during optimization"),
             &|_| panic!("virtual columns are removed during optimization"),
-            &|q| {
-                let r = util::load(n, row, &self.cs.fixed_queries, &self.fixed)(q);
-
-                eprintln!("query: {:?}\nrow: {}\n{:?}", q, row, r);
-                r
-            },
-            &|q| {
-                let r = util::load(n, row, &self.cs.advice_queries, &self.advice)(q);
-
-                eprintln!("query: {:?}\nrow: {}\n{:?}", q, row, r);
-                r
-            },
+            &|q| util::load(n, row, &self.cs.fixed_queries, &self.fixed)(q),
+            &|q| util::load(n, row, &self.cs.advice_queries, &self.advice)(q),
             &util::load_instance(n, row, &self.cs.instance_queries, &self.instance),
             &|a| -a,
             &|a, b| a + b,
