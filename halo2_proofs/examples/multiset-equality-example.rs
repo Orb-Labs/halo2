@@ -4,10 +4,15 @@ use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     dev::MockProver,
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance, Selector},
-    poly::Rotation,
+    plonk::{
+        create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
+        ConstraintSystem, Error, Fixed, Instance, Selector, SingleVerifier,
+    },
+    poly::{commitment::Params, Rotation},
+    transcript::{Blake2bRead, Blake2bWrite},
 };
-use pasta_curves::Fp;
+use pasta_curves::{vesta, EqAffine, Fp};
+use rand_core::OsRng;
 
 #[derive(Default)]
 struct EqSetCircuit {}
@@ -85,12 +90,18 @@ impl<F: FieldExt> Circuit<F> for EqSetCircuit {
             || "input",
             |mut region| {
                 for offset in 0..5 {
-                    region.assign_advice_from_instance(
+                    // region.assign_advice_from_instance(
+                    //     || "",
+                    //     config.input,
+                    //     offset,
+                    //     config.input_copy,
+                    //     offset,
+                    // )?;
+                    region.assign_advice(
                         || "",
-                        config.input,
-                        offset,
                         config.input_copy,
                         offset,
+                        || Value::known(F::from(offset as u64)),
                     )?;
 
                     region.assign_fixed(
@@ -117,4 +128,26 @@ fn main() {
     let input = [10].map(Fp::from).to_vec();
     let prover = MockProver::run(k, &EqSetCircuit {}, vec![input]).unwrap();
     assert!(prover.verify().is_ok());
+
+    let params: Params<EqAffine> = Params::new(k);
+    let vk = keygen_vk(&params, &EqSetCircuit::default()).unwrap();
+
+    let pk = keygen_pk(&params, vk, &EqSetCircuit::default()).unwrap();
+    let mut transcript = Blake2bWrite::<_, vesta::Affine, _>::init(vec![]);
+    create_proof(
+        &params,
+        &pk,
+        &[EqSetCircuit::default()],
+        &[&[&[]]],
+        &mut OsRng,
+        &mut transcript,
+    )
+    .expect("Failed to create proof");
+    let proof = transcript.finalize();
+
+    let mut transcript = Blake2bRead::init(&proof[..]);
+
+    let verifier = SingleVerifier::new(&params);
+    verify_proof(&params, pk.get_vk(), verifier, &[&[&[]]], &mut transcript)
+        .expect("could not verify_proof");
 }
